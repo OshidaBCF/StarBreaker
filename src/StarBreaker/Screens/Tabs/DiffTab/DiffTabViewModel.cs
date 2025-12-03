@@ -1242,6 +1242,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
                     OnPropertyChanged(nameof(CanCreateP4kReport));
                     OnPropertyChanged(nameof(CanExtractNewDdsFiles));
                     OnPropertyChanged(nameof(CanExtractNewAudioFiles));
+                    OnPropertyChanged(nameof(CanExtractNewSocpakFiles));
                     
                     var stats = P4kComparison.AnalyzeComparison(comparisonRoot);
                     ComparisonStatus = $"Comparison complete! Added: {stats.AddedFiles}, Removed: {stats.RemovedFiles}, Modified: {stats.ModifiedFiles}";
@@ -1445,6 +1446,11 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
             IsAudioFile(f.FullPath));
 
     /// <summary>
+    /// Indicates whether new socpak files can be listed (P4K comparison has been completed)
+    /// </summary>
+    public bool CanExtractNewSocpakFiles => _comparisonRoot != null && _leftP4kFile != null && _rightP4kFile != null;
+
+    /// <summary>
     /// Indicates whether selected P4K files can be extracted (files are selected)
     /// </summary>
     public bool CanExtractSelectedP4kFiles => SelectedP4kFiles.Any(f => f is P4kComparisonFileNode) && 
@@ -1460,6 +1466,13 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
     {
         var fileName = Path.GetFileName(filePath);
         return fileName.EndsWith(".wem", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSocpakFile(string filePath)
+    {
+        var fileName = Path.GetFileName(filePath);
+        return fileName.EndsWith(".socpak", StringComparison.OrdinalIgnoreCase) || 
+               fileName.EndsWith(".pak", StringComparison.OrdinalIgnoreCase);
     }
 
     [RelayCommand]
@@ -3294,6 +3307,84 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
         {
             _logger.LogError(ex, "Error extracting new WEM audio files");
             ComparisonStatus = $"Error extracting WEM files: {ex.Message}";
+        }
+        finally
+        {
+            IsComparing = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task ExtractNewSocpakFiles()
+    {
+        if (!CanExtractNewSocpakFiles)
+        {
+            _logger.LogWarning("Cannot list new socpak files - no comparison data available");
+            return;
+        }
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(P4kOutputDirectory))
+            {
+                _logger.LogWarning("P4K output directory not configured");
+                ComparisonStatus = "Please configure P4K output directory first";
+                return;
+            }
+
+            IsComparing = true;
+            ComparisonStatus = "Generating SOCPAK file list...";
+
+            await Task.Run(() =>
+            {
+                try
+                {
+                    var leftSocpaks = _leftP4kFile!.Entries
+                        .Where(e => IsSocpakFile(e.Name))
+                        .Where(e => !e.Name.Contains("shadercache_", StringComparison.OrdinalIgnoreCase))
+                        .Select(e => e.Name)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    var addedSocpakFiles = _rightP4kFile!.Entries
+                        .Where(e => IsSocpakFile(e.Name))
+                        .Where(e => !e.Name.Contains("shadercache_", StringComparison.OrdinalIgnoreCase))
+                        .Where(e => !leftSocpaks.Contains(e.Name))
+                        .Select(e => e.Name)
+                        .OrderBy(f => f)
+                        .ToArray();
+
+                    if (addedSocpakFiles.Length == 0)
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            ComparisonStatus = "No new SOCPAK files found.";
+                            _logger.LogInformation("No new SOCPAK files found");
+                        });
+                        return;
+                    }
+
+                    // Write text list to file
+                    var outputPath = Path.Combine(P4kOutputDirectory, "New_SOCPAK_Files.txt");
+                    File.WriteAllLines(outputPath, addedSocpakFiles);
+
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        ComparisonStatus = $"SOCPAK list generated! Found {addedSocpakFiles.Length} new SOCPAK files.";
+                        _logger.LogInformation("SOCPAK list generated - Found {Count} new SOCPAK files, saved to {OutputPath}", 
+                            addedSocpakFiles.Length, outputPath);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to generate SOCPAK file list");
+                    Dispatcher.UIThread.Post(() => ComparisonStatus = $"SOCPAK list generation failed: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating SOCPAK file list");
+            ComparisonStatus = $"Error generating SOCPAK list: {ex.Message}";
         }
         finally
         {

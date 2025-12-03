@@ -333,7 +333,7 @@
                 Padding="15" 
                 Margin="0,0,0,15"
                 IsVisible="{Binding IsP4kComparisonMode}">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto,Auto">
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="P4K Comparison" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
                     <TextBlock Text="This will compare the two selected P4K files and show added, removed, and modified files."
@@ -385,6 +385,17 @@
                         ToolTip.Tip="Extract all new WEM audio files"/>
                 
                 <Button Grid.Column="5" 
+                        Content="📦 List New SOCPAKs" 
+                        Command="{Binding ExtractNewSocpakFilesCommand}" 
+                        IsEnabled="{Binding CanExtractNewSocpakFiles}"
+                        VerticalAlignment="Center"
+                        MinWidth="180"
+                        MinHeight="35"
+                        FontWeight="SemiBold"
+                        Margin="10,0,0,0"
+                        ToolTip.Tip="Generate a text list of all new SOCPAK files"/>
+                
+                <Button Grid.Column="6" 
                         Content="📦 Extract Selected" 
                         Command="{Binding ExtractSelectedP4kFilesCommand}" 
                         IsEnabled="{Binding CanExtractSelectedP4kFiles}"

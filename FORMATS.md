@@ -93,6 +93,7 @@ Some of them require specific parsing, which I've already done.
 - json
 - meshsetup = plain xml
 - opr = plain json, object preset
+- ale = plain json, planet/material data
 - pak = zip file
 - png = image
 - svg
