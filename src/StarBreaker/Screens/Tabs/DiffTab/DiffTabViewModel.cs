@@ -23,6 +23,8 @@ using StarBreaker.Common;
 using StarBreaker.Dds;
 using Avalonia.Media.Imaging;
 using StarBreaker.Protobuf;
+using StarBreaker.CryChunkFile;
+using StarBreaker.CryXmlB;
 
 namespace StarBreaker.Screens;
 
@@ -78,6 +80,12 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
     // Selected items tracking
     [ObservableProperty] private IList<IP4kComparisonNode> _selectedP4kFiles = new List<IP4kComparisonNode>();
     [ObservableProperty] private IList<IDataCoreComparisonNode> _selectedDataCoreFiles = new List<IDataCoreComparisonNode>();
+
+    private List<DataCoreRecordViewModel>? _allRecords;
+    
+    // Fields for throttling log messages and progress updates
+    private string? _lastLoggedMessage;
+    private DateTime _lastLoggedMessageTime;
 
     public DiffTabViewModel(ILogger<DiffTabViewModel> logger, ITagDatabaseService tagDatabaseService)
     {
@@ -744,8 +752,8 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
             }
 
             // Create labels for the diff
-            var oldLabel = $"Left P4K";
-            var newLabel = $"Right P4K";
+            var oldLabel = "Old P4K";
+            var newLabel = "New P4K";
 
             var displayExtension = TextFormat == "json" ? ".json" : ".xml";
 
@@ -1145,7 +1153,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-            Title = "Select Left P4K File",
+            Title = "Select Old P4K File",
                 AllowMultiple = false,
                 FileTypeFilter = new[]
                 {
@@ -1171,7 +1179,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-            Title = "Select Right P4K File",
+            Title = "Select New P4K File",
                 AllowMultiple = false,
                 FileTypeFilter = new[]
                 {
@@ -1234,6 +1242,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
                     OnPropertyChanged(nameof(CanCreateP4kReport));
                     OnPropertyChanged(nameof(CanExtractNewDdsFiles));
                     OnPropertyChanged(nameof(CanExtractNewAudioFiles));
+                    OnPropertyChanged(nameof(CanExtractNewSocpakFiles));
                     
                     var stats = P4kComparison.AnalyzeComparison(comparisonRoot);
                     ComparisonStatus = $"Comparison complete! Added: {stats.AddedFiles}, Removed: {stats.RemovedFiles}, Modified: {stats.ModifiedFiles}";
@@ -1264,7 +1273,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-            Title = "Select Left P4K File (for DataCore)",
+            Title = "Select Old P4K File (for DataCore)",
                 AllowMultiple = false,
                 FileTypeFilter = new[]
                 {
@@ -1290,7 +1299,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Select Right P4K File (for DataCore)",
+            Title = "Select New P4K File (for DataCore)",
             AllowMultiple = false,
             FileTypeFilter = new[]
             {
@@ -1437,6 +1446,11 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
             IsAudioFile(f.FullPath));
 
     /// <summary>
+    /// Indicates whether new socpak files can be listed (P4K comparison has been completed)
+    /// </summary>
+    public bool CanExtractNewSocpakFiles => _comparisonRoot != null && _leftP4kFile != null && _rightP4kFile != null;
+
+    /// <summary>
     /// Indicates whether selected P4K files can be extracted (files are selected)
     /// </summary>
     public bool CanExtractSelectedP4kFiles => SelectedP4kFiles.Any(f => f is P4kComparisonFileNode) && 
@@ -1452,6 +1466,13 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
     {
         var fileName = Path.GetFileName(filePath);
         return fileName.EndsWith(".wem", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSocpakFile(string filePath)
+    {
+        var fileName = Path.GetFileName(filePath);
+        return fileName.EndsWith(".socpak", StringComparison.OrdinalIgnoreCase) || 
+               fileName.EndsWith(".pak", StringComparison.OrdinalIgnoreCase);
     }
 
     [RelayCommand]
@@ -2654,8 +2675,8 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
         
         report.AppendLine($"# P4K Comparison Report: {leftVersion} → {rightVersion}");
         report.AppendLine($"**Generated:** {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        report.AppendLine($"**Left P4K:** {Path.GetFileName(LeftP4kPath)} (v{leftVersion})");
-        report.AppendLine($"**Right P4K:** {Path.GetFileName(RightP4kPath)} (v{rightVersion})");
+        report.AppendLine($"**Old P4K:** {Path.GetFileName(LeftP4kPath)} (v{leftVersion})");
+        report.AppendLine($"**New P4K:** {Path.GetFileName(RightP4kPath)} (v{rightVersion})");
         report.AppendLine();
 
         // Summary
@@ -3286,6 +3307,84 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
         {
             _logger.LogError(ex, "Error extracting new WEM audio files");
             ComparisonStatus = $"Error extracting WEM files: {ex.Message}";
+        }
+        finally
+        {
+            IsComparing = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task ExtractNewSocpakFiles()
+    {
+        if (!CanExtractNewSocpakFiles)
+        {
+            _logger.LogWarning("Cannot list new socpak files - no comparison data available");
+            return;
+        }
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(P4kOutputDirectory))
+            {
+                _logger.LogWarning("P4K output directory not configured");
+                ComparisonStatus = "Please configure P4K output directory first";
+                return;
+            }
+
+            IsComparing = true;
+            ComparisonStatus = "Generating SOCPAK file list...";
+
+            await Task.Run(() =>
+            {
+                try
+                {
+                    var leftSocpaks = _leftP4kFile!.Entries
+                        .Where(e => IsSocpakFile(e.Name))
+                        .Where(e => !e.Name.Contains("shadercache_", StringComparison.OrdinalIgnoreCase))
+                        .Select(e => e.Name)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    var addedSocpakFiles = _rightP4kFile!.Entries
+                        .Where(e => IsSocpakFile(e.Name))
+                        .Where(e => !e.Name.Contains("shadercache_", StringComparison.OrdinalIgnoreCase))
+                        .Where(e => !leftSocpaks.Contains(e.Name))
+                        .Select(e => e.Name)
+                        .OrderBy(f => f)
+                        .ToArray();
+
+                    if (addedSocpakFiles.Length == 0)
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            ComparisonStatus = "No new SOCPAK files found.";
+                            _logger.LogInformation("No new SOCPAK files found");
+                        });
+                        return;
+                    }
+
+                    // Write text list to file
+                    var outputPath = Path.Combine(P4kOutputDirectory, "New_SOCPAK_Files.txt");
+                    File.WriteAllLines(outputPath, addedSocpakFiles);
+
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        ComparisonStatus = $"SOCPAK list generated! Found {addedSocpakFiles.Length} new SOCPAK files.";
+                        _logger.LogInformation("SOCPAK list generated - Found {Count} new SOCPAK files, saved to {OutputPath}", 
+                            addedSocpakFiles.Length, outputPath);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to generate SOCPAK file list");
+                    Dispatcher.UIThread.Post(() => ComparisonStatus = $"SOCPAK list generation failed: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating SOCPAK file list");
+            ComparisonStatus = $"Error generating SOCPAK list: {ex.Message}";
         }
         finally
         {
@@ -4360,6 +4459,10 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
                     .Where(e => e.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
+                var mainSocEntries = p4k.Entries
+                    .Where(e => e.Name.EndsWith(".soc", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
                 // Find all SOCPAK files
                 var socpakEntries = p4k.Entries
                     .Where(e => (e.Name.EndsWith(".socpak", StringComparison.OrdinalIgnoreCase) || 
@@ -4371,6 +4474,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
 
                 // Collect all XML entries from SOCPAKs
                 var socpakXmlEntries = new List<(P4kEntry entry, string socpakPath, P4kFile socpak)>();
+                var socpakSocEntries = new List<(P4kEntry entry, string socpakPath, P4kFile socpak)>();
                 foreach (var socpakEntry in socpakEntries)
                 {
                     try
@@ -4382,6 +4486,13 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
                             .ToList();
                         
                         socpakXmlEntries.AddRange(xmlsInSocpak);
+
+                        var socsInSocpak = socpak.Entries
+                            .Where(e => e.Name.EndsWith(".soc", StringComparison.OrdinalIgnoreCase))
+                            .Select(e => (entry: e, socpakPath: socpakEntry.RelativeOutputPath, socpak: socpak))
+                            .ToList();
+
+                        socpakSocEntries.AddRange(socsInSocpak);
                     }
                     catch (Exception ex)
                     {
@@ -4391,11 +4502,11 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
 
                 progressCallback(0.2);
 
-                var totalFiles = mainXmlEntries.Count + socpakXmlEntries.Count;
+                var totalFiles = mainXmlEntries.Count + socpakXmlEntries.Count + mainSocEntries.Count + socpakSocEntries.Count;
                 
                 if (totalFiles == 0)
                 {
-                    AddLogMessage("No XML files found in P4K or SOCPAKs.");
+                    AddLogMessage("No XML or SOC files found in P4K or SOCPAKs.");
                     progressCallback(1.0);
                     return;
                 }
@@ -4450,9 +4561,55 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
                     }
                 }
 
+                foreach (var entry in mainSocEntries)
+                {
+                    try
+                    {
+                        ExtractSocEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to extract SOC file: {FileName}", entry.Name);
+                    }
+
+                    processedFiles++;
+                    var currentProgress = 0.2 + ((double)processedFiles / totalFiles * 0.8);
+                    if (currentProgress - lastReportedProgress >= 0.02 || processedFiles == totalFiles)
+                    {
+                        progressCallback(currentProgress);
+                        lastReportedProgress = currentProgress;
+                    }
+                }
+
+                foreach (var (entry, socpakPath, socpak) in socpakSocEntries)
+                {
+                    try
+                    {
+                        var socpakDir = Path.GetDirectoryName(socpakPath) ?? "";
+                        var socpakName = Path.GetFileNameWithoutExtension(socpakPath);
+                        var fullOutputPath = Path.Combine(socpakDir, socpakName, entry.RelativeOutputPath);
+
+                        ExtractSocEntry(socpak, entry, outputDir, fullOutputPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to extract SOC from SOCPAK: {FileName}", entry.Name);
+                    }
+
+                    processedFiles++;
+                    var currentProgress = 0.2 + ((double)processedFiles / totalFiles * 0.8);
+                    if (currentProgress - lastReportedProgress >= 0.02 || processedFiles == totalFiles)
+                    {
+                        progressCallback(currentProgress);
+                        lastReportedProgress = currentProgress;
+                    }
+                }
+
                 progressCallback(1.0);
                 AddLogMessage($"Extracted {mainXmlEntries.Count} XML files from P4K and {socpakXmlEntries.Count} from SOCPAKs.");
+                AddLogMessage($"Extracted {mainSocEntries.Count} SOC files from P4K and {socpakSocEntries.Count} from SOCPAKs.");
             });
+            AddLogMessage("P4K XML extraction completed.");
         }
         catch (Exception ex)
         {
@@ -4494,6 +4651,59 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
             using var fs = File.Create(entryPath);
             ms.Position = 0;
             ms.CopyTo(fs);
+        }
+    }
+
+    private void ExtractSocEntry(P4kFile p4k, P4kEntry entry, string baseOutputDir, string relativePath)
+    {
+        using var entryStream = p4k.OpenStream(entry);
+        using var ms = new MemoryStream();
+        entryStream.CopyTo(ms);
+        var socBytes = ms.ToArray();
+
+        var adjustedRelativePath = NormalizeSocRelativePath(relativePath);
+        var entryPath = Path.Combine(baseOutputDir, adjustedRelativePath);
+        var objectContainerDir = Path.GetDirectoryName(entryPath) ?? baseOutputDir;
+        var baseName = Path.GetFileNameWithoutExtension(entryPath);
+        Directory.CreateDirectory(objectContainerDir);
+
+        try
+        {
+            if (!CrChFile.TryRead(socBytes, out var socFile))
+            {
+                var rawPath = Path.Combine(objectContainerDir, Path.GetFileName(entryPath));
+                File.WriteAllBytes(rawPath, socBytes);
+                return;
+            }
+
+            var xmlChunks = 0;
+            for (int i = 0; i < socFile.Chunks.Length; i++)
+            {
+                var chunk = socFile.Chunks[i];
+                if (!CryXmlB.CryXml.IsCryXmlB(chunk))
+                    continue;
+
+                using var chunkStream = new MemoryStream(chunk);
+                var cryXml = new CryXmlB.CryXml(chunkStream);
+                var xmlPath = Path.Combine(objectContainerDir, $"{baseName}_{i}.xml");
+                File.WriteAllText(xmlPath, ResolveXmlTags(cryXml.ToString()));
+                xmlChunks++;
+            }
+
+            if (xmlChunks == 0)
+            {
+                var rawPath = Path.Combine(objectContainerDir, Path.GetFileName(entryPath));
+                File.WriteAllBytes(rawPath, socBytes);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to convert SOC to XML, writing raw file");
+            var rawPath = Path.Combine(objectContainerDir, Path.GetFileName(entryPath));
+            if (!File.Exists(rawPath))
+            {
+                File.WriteAllBytes(rawPath, socBytes);
+            }
         }
     }
 
@@ -4742,6 +4952,10 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
 
     private void AddLogMessage(string message)
     {
+        // Skip if message unchanged and we logged it moments ago
+        if (_lastLoggedMessage == message && (DateTime.UtcNow - _lastLoggedMessageTime) < TimeSpan.FromSeconds(2))
+            return;
+
         var formattedMessage = $"[{DateTime.Now:HH:mm:ss}] {message}";
         
         // Ensure UI updates are always dispatched to the UI thread
@@ -4758,6 +4972,8 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
                 _logger.LogInformation(message);
             });
         }
+        _lastLoggedMessage = message;
+        _lastLoggedMessageTime = DateTime.UtcNow;
     }
 
     // Helper method to throttle progress updates
@@ -4852,5 +5068,22 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
             _logger.LogWarning(ex, "Failed to resolve XML tags");
             return xml;
         }
+    }
+
+    private static string NormalizeSocRelativePath(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return relativePath;
+
+        var trimmed = relativePath.TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Replace('\\', '/');
+
+        var parts = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length == 0)
+            return string.Empty;
+
+        var normalizedPath = Path.Combine(parts);
+        return normalizedPath;
     }
 } 

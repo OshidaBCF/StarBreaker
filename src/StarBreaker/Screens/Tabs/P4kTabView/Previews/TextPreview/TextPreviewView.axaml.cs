@@ -10,6 +10,7 @@ public partial class TextPreviewView : UserControl
     private TextEditor? _textEditor;
     private TextMate.Installation? _textMateInstallation;
     private RegistryOptions? _registryOptions;
+    private string? _currentLanguage;
     
     public TextPreviewView()
     {
@@ -27,37 +28,68 @@ public partial class TextPreviewView : UserControl
         DataContextChanged += OnDataContextChanged;
     }
     
-    private void OnDataContextChanged(object? sender, EventArgs e)
+    private CancellationTokenSource? _debounceCts;
+
+    private async void OnDataContextChanged(object? sender, EventArgs e)
     {
         if (_textEditor != null && DataContext is TextPreviewViewModel vm)
         {
-            _textEditor.Text = vm.Text ?? string.Empty;
-            
-            // Apply syntax highlighting based on file extension and content
-            if (_textMateInstallation != null && _registryOptions != null)
+            _debounceCts?.Cancel();
+            _debounceCts = new CancellationTokenSource();
+            var token = _debounceCts.Token;
+
+            try
             {
-                var language = DetectLanguageFromExtension(vm.FileExtension) ?? DetectLanguageFromContent(vm.Text);
-                if (!string.IsNullOrEmpty(language))
+                await Task.Delay(100, token);
+                
+                if (token.IsCancellationRequested) return;
+                if (_textMateInstallation != null && _registryOptions != null)
                 {
-                    try
+                    var language = DetectLanguageFromExtension(vm.FileExtension) ?? DetectLanguageFromContent(vm.Text);
+                    
+                    if (language != _currentLanguage)
                     {
-                        var scope = _registryOptions.GetScopeByLanguageId(language);
-                        if (scope != null)
+                        try
                         {
-                            _textMateInstallation.SetGrammar(scope);
+                            if (!string.IsNullOrEmpty(language))
+                            {
+                                var scope = _registryOptions.GetScopeByLanguageId(language);
+                                if (scope != null)
+                                {
+                                    _textMateInstallation.SetGrammar(scope);
+                                    _currentLanguage = language;
+                                }
+                            }
+                            else
+                            {
+                                _textMateInstallation.SetGrammar(null);
+                                _currentLanguage = null;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"TextMate error: {ex.Message}");
+                            try
+                            {
+                                _textMateInstallation.SetGrammar(null);
+                            }
+                            catch { }
+                            _currentLanguage = null;
                         }
                     }
-                    catch
-                    {
-                        // If the specific language isn't available, clear highlighting
-                        _textMateInstallation.SetGrammar(null);
-                    }
                 }
-                else
+                
+                if (!token.IsCancellationRequested)
                 {
-                    // Clear syntax highlighting for unknown content
-                    _textMateInstallation.SetGrammar(null);
+                    _textEditor.Text = vm.Text ?? string.Empty;
                 }
+            }
+            catch (TaskCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in OnDataContextChanged: {ex.Message}");
             }
         }
     }
@@ -71,15 +103,16 @@ public partial class TextPreviewView : UserControl
         {
             ".xml" => "xml",
             ".json" => "json",
-            ".cfg" => "ini", // Configuration files often use INI-like syntax
-            ".ini" => "ini", // INI files
+            ".cfg" => "ini",
+            ".ini" => "ini",
             ".txt" => "plaintext",
-            ".mtl" => "xml", // Material files in Star Citizen are often XML-based
-            ".eco" => "xml", // Eco files are typically XML
+            ".mtl" => "xml",
+            ".eco" => "xml",
+            ".ale" => "json",
             ".lua" => "lua",
             ".js" => "javascript",
             ".hlsl" => "hlsl",
-            ".fx" => "hlsl", // Effect files
+            ".fx" => "hlsl",
             ".shader" => "hlsl",
             ".cryxml" => "xml",
             _ => null
