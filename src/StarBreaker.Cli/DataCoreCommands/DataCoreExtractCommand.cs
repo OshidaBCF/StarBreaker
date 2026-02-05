@@ -79,6 +79,7 @@ public class DataCoreExtractCommand : ICommand
             _ => DataForge.FromDcbStreamXml(dcbStream),
         };
 
+        // Extract and save in ram the "tagdatabase" for in file replacement
         var tagDatabasePath = Path.Combine(OutputDirectory, "..\\TagDatabase\\Data\\Libs\\Foundry\\Records\\TagDatabase\\TagDatabase.TagDatabase.xml");
         df.DataCore.createTagDatabase(tagDatabasePath);
 
@@ -86,7 +87,7 @@ public class DataCoreExtractCommand : ICommand
         console.Output.WriteLine($"Exporting as {TextFormat ?? "xml"} to {OutputDirectory}...");
 
         var sw = Stopwatch.StartNew();
-        var singleThreadedDebug = false;
+        var singleThreadedDebug = false; // To use for debugging as it doesn't like threads
         df.ExtractAllParallel(OutputDirectory, Filter, new ProgressBar(console), singleThreadedDebug);
         if (!string.IsNullOrEmpty(OutputFolderTypes))
         {

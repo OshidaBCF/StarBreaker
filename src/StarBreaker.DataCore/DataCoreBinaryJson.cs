@@ -17,9 +17,10 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         Database = db;
     }
 
-
+    // Tag Dictionary
     private Dictionary<string, string> tagDatabaseDictionary = new();
 
+    // Create Tag Dictionary using the TagDatabase.TagDatabase.xml extracted
     public void createTagDatabase(string tagDatabasePath)
     {
         // Create Tag Database from XML
@@ -35,6 +36,8 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
                 {
                     var GUID = item.Attribute("__guid").Value;
                     var tagName = item.Attribute("tagName").Value;
+
+                    // Use the GUID as the key, with the actual tag as the value
                     tagDatabaseDictionary[GUID] = tagName;
                 }
 
@@ -42,6 +45,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
             }
         }
 
+        // Walk recursively though all elements of the XML
         walkThoughChildrens(tagDatabaseXML.Root.Element("tags")!);
     }
     public void SaveRecordToFile(DataCoreRecord record, string path)
@@ -50,7 +54,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         using var writer = new Utf8JsonWriter(fileStream, new JsonWriterOptions
         {
             Indented = true,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // This fixes special character (&, ') being written as &amp; or &apos; (or event &amp;apos;)
         });
 
         WriteInner(record, writer);
@@ -62,7 +66,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         using var writer = new Utf8JsonWriter(fileStream, new JsonWriterOptions
         {
             Indented = true,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // This fixes special character (&, ') being written as &amp; or &apos; (or event &amp;apos;)
         });
         
         var structDefinition = Database.StructDefinitions[structIndex];
@@ -90,7 +94,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         using var writer = new Utf8JsonWriter(fileStream, new JsonWriterOptions
         {
             Indented = true,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // This fixes special character (&, ') being written as &amp; or &apos; (or event &amp;apos;)
         });
         
         var enumDefinition = Database.EnumDefinitions[enumIndex];
@@ -199,6 +203,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
             case DataType.Double: context.Writer.WriteNumber(propName, reader.ReadDouble()); break;
             case DataType.Single: context.Writer.WriteNumber(propName, reader.ReadSingle()); break;
             case DataType.String:
+                // This replaces Tags Record ID with the actual value, much cleaner to read
                 var stringToWrite = reader.Read<DataCoreStringId>().ToString(Database);
                 if (stringToWrite != string.Empty)
                 {
@@ -228,6 +233,8 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
 
         var propName = prop.GetName(Database);
         context.Writer.WriteStartArray(propName);
+
+        // If the array is empty, write []
         if (count == 0)
         {
             context.Writer.WriteEndArray();
@@ -313,6 +320,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         //if we get here, we're referencing a part of another file. mention the file and some details
         
         var replaceTagInJsons = true;
+        // If we replace tags, and the current record reference teh tagdatabase, replace it
         if (replaceTagInJsons && record.GetFileName(Database).EndsWith("tagdatabase.tagdatabase.xml"))
         {
             
@@ -321,6 +329,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
             else
                 context.Writer.WriteString(propName, tagDatabaseDictionary[record.Id.ToString()]);
         }
+        // Otherwise write record (possibility to add more databases if useful later)
         else
         {
             if (propName == null)

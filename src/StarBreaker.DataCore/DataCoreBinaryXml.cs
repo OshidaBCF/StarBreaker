@@ -14,6 +14,7 @@ public sealed class DataCoreBinaryXml : IDataCoreBinary<string>
         Database = db;
     }
 
+    // Unused Dictionary and Method because i don't know how to make it better for Interfaces
     private Dictionary<string, object> tagDatabaseDictionary;
     public void createTagDatabase(string tagDatabasePath){ }
 

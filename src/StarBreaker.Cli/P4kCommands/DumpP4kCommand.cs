@@ -110,7 +110,7 @@ public class DumpP4kCommand : ICommand
                 using var writer = new Utf8JsonWriter(fs, new JsonWriterOptions
                 {
                     Indented = true,
-                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // This fixes special character (&, ') being written as &amp; or &apos; (or event &amp;apos;)
                 });
                 jsonDir.WriteTo(writer);
             }

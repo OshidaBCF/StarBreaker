@@ -54,7 +54,8 @@ public class DiffCommand : ICommand
 
     public async ValueTask ExecuteAsync(IConsole console)
     {
-        //
+        // Extract using the version number present in build_manifest.json
+        // CAUTION, can break if files changes but the version number doesn't (shouldn't happen too often but it did happened)
         if (UseGameVersionAsPath)
         {
             var build_manifestPath = Path.Combine(GameFolder, "build_manifest.id");
@@ -62,18 +63,21 @@ public class DiffCommand : ICommand
             var jsonObject = JsonNode.Parse(stream);
             if (jsonObject != null)
             {
-                // use argument path as "parent" path
+                // Use game version as output folder name, combined with -o output path
+                // Format is sc-alpha-X.Y.Z-01234567
                 OutputDirectory = Path.Combine(OutputFolder, $"{jsonObject["Data"]["Branch"]}-{jsonObject["Data"]["RequestedP4ChangeNum"]}");
             }
         }
         else
         {
-            // Set general output director as input
+            // Otherwise, just use the -o argument has output path
             OutputDirectory = OutputFolder;
         }
 
         var swTotal = Stopwatch.StartNew();
         var sw = Stopwatch.StartNew();
+
+        // Check if output folder already exist, then ask user for confirmation
         if (Path.Exists(OutputDirectory))
         {
             var continueQuestionUnanswered = true;
@@ -98,11 +102,12 @@ public class DiffCommand : ICommand
                     continueExtraction = input.Equals("y", StringComparison.CurrentCultureIgnoreCase);
                     continueQuestionUnanswered = false;
                 }
-
             }
             if (!continueExtraction) return;
             console.Clear();
         }
+
+        // If old folder doesn't exist, no need to write it on console
         if (!KeepOld && Path.Exists(OutputDirectory))
         {
             await console.Output.WriteLineAsync("Deleting old files...");
@@ -142,11 +147,14 @@ public class DiffCommand : ICommand
         var p4kFile = Path.Combine(GameFolder, "Data.p4k");
         var exeFile = Path.Combine(GameFolder, "Bin64", "StarCitizen.exe");
 
+        // TagDatabase extraction is now first to create the Tag Dictionary in ram for inline file modification
         await console.Output.WriteLineAsync("Extracting TagDatabase...");
         await ExtractTagDatabase(p4kFile, fakeConsole);
         await console.Output.WriteLineAsync("TagDatabase extracted in " + sw.Elapsed);
         sw.Restart();
         
+        // Rest is sorted in alphabetical order cuz it bothered me
+        // Also added a "Extracting X" message before starting extraction
         await console.Output.WriteLineAsync("Extracting DataCore...");
         var dcbExtract = new DataCoreExtractCommand
         {
@@ -424,7 +432,7 @@ public class DiffCommand : ICommand
         }
     }
 
-    private void ExtractSocEntry(P4kFile p4k, P4kEntry entry, string baseOutputDir, string relativePath)
+    private static void ExtractSocEntry(P4kFile p4k, P4kEntry entry, string baseOutputDir, string relativePath)
     {
         using var entryStream = p4k.OpenStream(entry);
         using var ms = new MemoryStream();
@@ -447,7 +455,7 @@ public class DiffCommand : ICommand
             }
 
             var xmlChunks = 0;
-            for (int i = 0; i < socFile.Chunks.Length; i++)
+            for (var i = 0; i < socFile.Chunks.Length; i++)
             {
                 var chunk = socFile.Chunks[i];
                 if (!CryXml.IsCryXmlB(chunk))
@@ -551,15 +559,16 @@ public class DiffCommand : ICommand
                 ddsEntriesToExtract = GetBaseDdsEntries(p4k);
             }
 
-            //ddsEntriesToExtract = ddsEntriesToExtract.Take(1000);
-
+            // Because of large number of file, added a rough progress bar
             var totalCount = ddsEntriesToExtract.Count();
             var progressPercentage = totalCount / 10;
 
             var processedCount = 0;
             var failedCount = 0;
+            // Converting DDS to PNG or not
             if (ConvertDDSToPNG)
             {
+                // Using Threaded process or not
                 if (UseParallelConvertion)
                 {
                     Parallel.ForEach(ddsEntriesToExtract, entry =>
@@ -699,15 +708,15 @@ public class DiffCommand : ICommand
         /* return only dds and dds.a but not .ddna files (idk why because ddna files are written as _ddna.dds)
         return p4k.Entries
             .Where(e => e.Name.EndsWith(".dds", StringComparison.OrdinalIgnoreCase) || 
-                       e.Name.EndsWith(".dds.a", StringComparison.OrdinalIgnoreCase)) // Shouldn't be present as dds.a aren't processable
-            .Where(e => !e.Name.EndsWith(".ddna.dds", StringComparison.OrdinalIgnoreCase) && // Doesn't filter anything as there is no .ddna.dds files, only _ddna.dds
-                       !e.Name.EndsWith(".ddna.dds.n", StringComparison.OrdinalIgnoreCase)) // Doesn't filter anything as file ends with s or a, not n
-            .Where(e => !char.IsDigit(e.Name[^1])) // Doesn't filter anything as file ends with s or a, not a number
+                        e.Name.EndsWith(".dds.a", StringComparison.OrdinalIgnoreCase)) // Shouldn't be present as dds.a aren't processable
+            .Where(e => !e.Name.EndsWith(".ddna.dds", StringComparison.OrdinalIgnoreCase) && // Doesn't filter anything as there's no remaining files that can end like this
+                        !e.Name.EndsWith(".ddna.dds.n", StringComparison.OrdinalIgnoreCase)) // Doesn't filter anything as there's no remaining files that can end like this
+            .Where(e => !char.IsDigit(e.Name[^1])) // Doesn't filter anything as there remaining files that can end like this
             .ToList();
         */
 
-                            // Only select .dds files, ignoring .dds.a or .dds.n
-                            return p4k.Entries
+        // Only select .dds files, as only those can be processed
+        return p4k.Entries
             .Where(e => e.Name.EndsWith(".dds", StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
