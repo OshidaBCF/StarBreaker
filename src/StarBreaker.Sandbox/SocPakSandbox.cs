@@ -1,8 +1,7 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using StarBreaker.CryChunkFile;
 using StarBreaker.CryXmlB;
 using StarBreaker.P4k;
-using StarBreaker.P4k.Extraction;
 
 namespace StarBreaker.Sandbox;
 
@@ -23,7 +22,7 @@ public static class SocPakSandbox
             {
                 var p4kFile = P4kFile.FromFile(socPak);
 
-                var extractor = new P4kExtractor(p4kFile);
+                var extractor = new P4k.P4kExtractor(p4kFile);
                 var xx = socPak
                     .Replace(@"D:\StarCitizen\P4kSocPak\", "")
                     .Replace(".socpak", "");

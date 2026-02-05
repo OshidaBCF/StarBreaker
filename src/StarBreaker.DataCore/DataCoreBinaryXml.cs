@@ -14,6 +14,9 @@ public sealed class DataCoreBinaryXml : IDataCoreBinary<string>
         Database = db;
     }
 
+    private Dictionary<string, object> tagDatabaseDictionary;
+    public void createTagDatabase(string tagDatabasePath){ }
+
     public void SaveRecordToFile(DataCoreRecord record, string path)
     {
         using var fileStream = new FileStream(Path.ChangeExtension(path, "xml"), FileMode.Create);

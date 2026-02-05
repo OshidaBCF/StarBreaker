@@ -61,7 +61,7 @@ public static class DdsFile
 
         var finalDds = new MemoryStream();
 
-        //todo glossmap header
+        //todo glossmap header (dds.a)
 
         finalDds.Write(Magic);
         finalDds.Write(header);

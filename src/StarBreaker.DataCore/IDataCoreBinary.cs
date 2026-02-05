@@ -11,4 +11,6 @@ public interface IDataCoreBinary<out T>
     void SaveStructToFile(int structIndex, string path);
     
     void SaveEnumToFile(int enumIndex, string path);
+
+    void createTagDatabase(string tagDatabasePath);
 }

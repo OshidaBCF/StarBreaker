@@ -1,10 +1,8 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using CliFx;
 using CliFx.Attributes;
 using CliFx.Infrastructure;
 using StarBreaker.Cli.Utils;
-using StarBreaker.P4k;
-using StarBreaker.P4k.Extraction;
 
 namespace StarBreaker.Cli;
 
@@ -28,7 +26,7 @@ public class ExtractP4kCommand : ICommand
         console.Output.WriteLine("Exporting...");
 
         var sw = Stopwatch.StartNew();
-        var extractor = new StarBreaker.P4k.Extraction.P4kExtractor(p4k);
+        var extractor = new P4k.Extraction.P4kExtractor(p4k);
         extractor.ExtractFiltered(OutputDirectory, FilterPattern, new ProgressBar(console));
         sw.Stop();
 

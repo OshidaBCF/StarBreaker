@@ -13,6 +13,9 @@ public sealed class DataCoreBinaryJsonObject : IDataCoreBinary<JsonObject>
         Database = db;
     }
 
+    private Dictionary<string, object> tagDatabaseDictionary;
+    public void createTagDatabase(string tagDatabasePath) { }
+
     public void SaveRecordToFile(DataCoreRecord record, string path)
     {
         using var stream = File.OpenWrite(Path.ChangeExtension(path, "json"));

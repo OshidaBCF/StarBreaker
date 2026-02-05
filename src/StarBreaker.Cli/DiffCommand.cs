@@ -1,4 +1,3 @@
-﻿using System.Diagnostics;
 using CliFx;
 using CliFx.Attributes;
 using CliFx.Infrastructure;
@@ -7,6 +6,9 @@ using StarBreaker.CryXmlB;
 using StarBreaker.DataCore;
 using StarBreaker.Dds;
 using StarBreaker.P4k;
+using System.Diagnostics;
+using System.Text.Json.Nodes;
+using System.Xml.Linq;
 using ZstdSharp;
 
 namespace StarBreaker.Cli;
@@ -18,27 +20,89 @@ public class DiffCommand : ICommand
     public required string GameFolder { get; init; }
 
     [CommandOption("output", 'o', Description = "Path to the output directory", EnvironmentVariable = "OUTPUT_FOLDER")]
-    public required string OutputDirectory { get; init; }
+    public required string OutputFolder { get; init; }
+
+    string OutputDirectory = "";
+
+    [CommandOption("use-game-version-as-path", Description = "Use the game version as the output name (eg:\"sc-alpha-4.4.0-10633661\") and use the output path as the parent folder", EnvironmentVariable = "USE_VERSION_AS_PATH")]
+    public bool UseGameVersionAsPath { get; init; }
 
     [CommandOption("keep", 'k', Description = "Keep old files in the output directory", EnvironmentVariable = "KEEP_OLD")]
     public bool KeepOld { get; init; }
 
-
     [CommandOption("format", 'f', Description = "Output format", EnvironmentVariable = "TEXT_FORMAT")]
     public string TextFormat { get; init; } = "xml";
 
-    [CommandOption("extract-dds", Description = "Extract DDS files as PNG", EnvironmentVariable = "EXTRACT_DDS")]
+    [CommandOption("extract-dds", Description = "Extract DDS", EnvironmentVariable = "EXTRACT_DDS")]
     public bool ExtractDds { get; init; }
+
+    [CommandOption("convert-dds", Description = "Convert DDS files to PNG", EnvironmentVariable = "CONVERT_DDS")]
+    public bool ConvertDDSToPNG { get; init; }
+
+    [CommandOption("use-parallel-convertion", Description = "Extract/Convert DDS files using paralellism", EnvironmentVariable = "USE_PARALLEL")]
+    public bool UseParallelConvertion { get; init; }
+
+    [CommandOption("save-archive", Description = "Create Compressed Archive of the game exe and DataCore", EnvironmentVariable = "SAVE_ARCHIVE")]
+    public bool SaveCompressedArchive { get; init; }
 
     [CommandOption("diff-against", Description = "Path to previous P4K file or output directory to compare against for extracting only new/modified DDS files", EnvironmentVariable = "DIFF_AGAINST")]
     public string? DiffAgainst { get; init; }
 
+    [CommandOption("replace-tags", Description = "Replace tags in Datacore with their actual value from TagDatabase (only in JSON text format)", EnvironmentVariable = "REPLACE_TAGS")]
+    public string? ReplaceTagsInDatacore { get; init; }
+
     public async ValueTask ExecuteAsync(IConsole console)
     {
+        //
+        if (UseGameVersionAsPath)
+        {
+            var build_manifestPath = Path.Combine(GameFolder, "build_manifest.id");
+            using var stream = File.OpenRead(build_manifestPath);
+            var jsonObject = JsonNode.Parse(stream);
+            if (jsonObject != null)
+            {
+                // use argument path as "parent" path
+                OutputDirectory = Path.Combine(OutputFolder, $"{jsonObject["Data"]["Branch"]}-{jsonObject["Data"]["RequestedP4ChangeNum"]}");
+            }
+        }
+        else
+        {
+            // Set general output director as input
+            OutputDirectory = OutputFolder;
+        }
+
         var swTotal = Stopwatch.StartNew();
         var sw = Stopwatch.StartNew();
+        if (Path.Exists(OutputDirectory))
+        {
+            var continueQuestionUnanswered = true;
+            var continueExtraction = false;
+            await console.Output.WriteLineAsync($"Version {OutputDirectory.Split("\\").Last()} already exist");
+            await console.Output.WriteLineAsync($"Do you wish to continue ? Y/N");
+            while (continueQuestionUnanswered)
+            {
+                var input = await console.Input.ReadLineAsync();
+                if (!input.Equals("y", StringComparison.CurrentCultureIgnoreCase) && !input.Equals("n", StringComparison.CurrentCultureIgnoreCase))
+                {
+                    console.CursorLeft = 0;
+                    await console.Output.WriteLineAsync($"                                                                  ");
+                    console.CursorLeft = 0;
+                    console.CursorTop -= 2;
+                    await console.Output.WriteLineAsync($"                                                                  ");
+                    console.CursorLeft = 0;
+                    console.CursorTop -= 1;
+                }
+                else 
+                {
+                    continueExtraction = input.Equals("y", StringComparison.CurrentCultureIgnoreCase);
+                    continueQuestionUnanswered = false;
+                }
 
-        if (!KeepOld)
+            }
+            if (!continueExtraction) return;
+            console.Clear();
+        }
+        if (!KeepOld && Path.Exists(OutputDirectory))
         {
             await console.Output.WriteLineAsync("Deleting old files...");
             List<string> deleteFolder =
@@ -77,24 +141,12 @@ public class DiffCommand : ICommand
         var p4kFile = Path.Combine(GameFolder, "Data.p4k");
         var exeFile = Path.Combine(GameFolder, "Bin64", "StarCitizen.exe");
 
-        var dumpP4k = new DumpP4kCommand
-        {
-            P4kFile = p4kFile,
-            OutputDirectory = Path.Combine(OutputDirectory, "P4k"),
-            TextFormat = TextFormat,
-        };
-        await dumpP4k.ExecuteAsync(fakeConsole);
-        await console.Output.WriteLineAsync("P4k dumped in " + sw.Elapsed);
-        sw.Restart();
-
-        await ExtractLocalization(p4kFile, console);
-        await console.Output.WriteLineAsync("Localization extracted in " + sw.Elapsed);
-        sw.Restart();
-
-        await ExtractTagDatabase(p4kFile, console);
+        await console.Output.WriteLineAsync("Extracting TagDatabase...");
+        await ExtractTagDatabase(p4kFile, fakeConsole);
         await console.Output.WriteLineAsync("TagDatabase extracted in " + sw.Elapsed);
         sw.Restart();
-
+        
+        await console.Output.WriteLineAsync("Extracting DataCore...");
         var dcbExtract = new DataCoreExtractCommand
         {
             P4kFile = p4kFile,
@@ -107,17 +159,37 @@ public class DiffCommand : ICommand
         await console.Output.WriteLineAsync("DataCore extracted in " + sw.Elapsed);
         sw.Restart();
 
-        await ExtractP4kXmlFiles(p4kFile, console);
-        await console.Output.WriteLineAsync("P4K XML files extracted in " + sw.Elapsed);
-        sw.Restart();
-
         if (ExtractDds)
         {
+            await console.Output.WriteLineAsync("Extracting DDS files...");
             await ExtractDdsFiles(p4kFile, console, DiffAgainst);
             await console.Output.WriteLineAsync("DDS files extracted in " + sw.Elapsed);
             sw.Restart();
         }
 
+        await console.Output.WriteLineAsync("Extracting Localization...");
+        await ExtractLocalization(p4kFile, console);
+        await console.Output.WriteLineAsync("Localization extracted in " + sw.Elapsed);
+        sw.Restart();
+
+
+        await console.Output.WriteLineAsync("Extracting P4k...");
+        var dumpP4k = new DumpP4kCommand
+        {
+            P4kFile = p4kFile,
+            OutputDirectory = Path.Combine(OutputDirectory, "P4k"),
+            TextFormat = TextFormat,
+        };
+        await dumpP4k.ExecuteAsync(fakeConsole);
+        await console.Output.WriteLineAsync("P4k extracted in " + sw.Elapsed);
+        sw.Restart();
+
+        await console.Output.WriteLineAsync("Extracting P4K Content files...");
+        await ExtractP4kXmlFiles(p4kFile, console);
+        await console.Output.WriteLineAsync("P4K Content files extracted in " + sw.Elapsed);
+        sw.Restart();
+        
+        await console.Output.WriteLineAsync("Extracting Protobuf definitions...");
         var extractProtobufs = new ExtractProtobufsCommand
         {
             Input = exeFile,
@@ -127,6 +199,7 @@ public class DiffCommand : ICommand
         await console.Output.WriteLineAsync("Protobuf definitions extracted in " + sw.Elapsed);
         sw.Restart();
 
+        await console.Output.WriteLineAsync("Extracting Protobuf descriptor set...");
         var extractDescriptor = new ExtractDescriptorSetCommand
         {
             Input = exeFile,
@@ -136,10 +209,14 @@ public class DiffCommand : ICommand
         await console.Output.WriteLineAsync("Protobuf descriptor set extracted in " + sw.Elapsed);
         sw.Restart();
 
-        await ExtractDataCoreIntoZip(p4kFile, Path.Combine(OutputDirectory, "DataCore.dcb.zst"));
-        await ExtractExecutableIntoZip(exeFile, Path.Combine(OutputDirectory, "StarCitizen.exe.zst"));
-        await console.Output.WriteLineAsync("Compressed archives created in " + sw.Elapsed);
-        sw.Restart();
+        if (SaveCompressedArchive)
+        {
+            await console.Output.WriteLineAsync("Creating Compressed archives...");
+            await ExtractDataCoreIntoZip(p4kFile, Path.Combine(OutputDirectory, "DataCore.dcb.zst"));
+            await ExtractExecutableIntoZip(exeFile, Path.Combine(OutputDirectory, "StarCitizen.exe.zst"));
+            await console.Output.WriteLineAsync("Compressed archives created in " + sw.Elapsed);
+            sw.Restart();
+        }
 
         var buildManifestSource = Path.Combine(GameFolder, "build_manifest.id");
         var buildManifestTarget = Path.Combine(OutputDirectory, "build_manifest.json");
@@ -147,7 +224,7 @@ public class DiffCommand : ICommand
         {
             File.Copy(buildManifestSource, buildManifestTarget, true);
         }
-
+        
         await console.Output.WriteLineAsync($"Done in {swTotal.Elapsed}");
     }
 
@@ -197,11 +274,10 @@ public class DiffCommand : ICommand
         using var entryStream = p4k.OpenStream(tagDbEntry);
         var ms = new MemoryStream();
         entryStream.CopyTo(ms);
-        ms.Position = 0;
 
+        ms.Position = 0;
         var entryPath = Path.Combine(outputDir, tagDbEntry.RelativeOutputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(entryPath)!);
-
         if (CryXml.IsCryXmlB(ms))
         {
             ms.Position = 0;
@@ -287,7 +363,7 @@ public class DiffCommand : ICommand
         await console.Output.WriteLineAsync($"Extracted {mainXmlEntries.Count} XML files from P4K and {socpakXmlEntries.Count} from SOCPAKs.");
     }
 
-    private void ExtractXmlEntry(P4kFile p4k, P4kEntry entry, string baseOutputDir, string relativePath)
+    private static void ExtractXmlEntry(P4kFile p4k, P4kEntry entry, string baseOutputDir, string relativePath)
     {
         using var entryStream = p4k.OpenStream(entry);
         var ms = new MemoryStream();
@@ -394,39 +470,142 @@ public class DiffCommand : ICommand
                 ddsEntriesToExtract = GetBaseDdsEntries(p4k);
             }
 
+            //ddsEntriesToExtract = ddsEntriesToExtract.Take(1000);
+
+            var totalCount = ddsEntriesToExtract.Count();
+            var progressPercentage = totalCount / 10;
+
             var processedCount = 0;
             var failedCount = 0;
-
-            foreach (var entry in ddsEntriesToExtract)
+            if (ConvertDDSToPNG)
             {
-                try
+                if (UseParallelConvertion)
                 {
-                    var fileName = Path.GetFileName(entry.Name);
-                    var fileNameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
-                    
-                    if (fileNameWithoutExt.EndsWith(".dds", StringComparison.OrdinalIgnoreCase))
+                    Parallel.ForEach(ddsEntriesToExtract, entry =>
                     {
-                        fileNameWithoutExt = fileNameWithoutExt.Substring(0, fileNameWithoutExt.Length - 4);
-                    }
-                    
-                    var pngOutputPath = Path.Combine(outputDir, fileNameWithoutExt + ".png");
+                        try
+                        {
+                            using var ms = DdsFile.MergeToStream(entry.Name, p4kFileSystem);
+                            var ddsBytes = ms.ToArray();
+                            using var pngStream = DdsFile.ConvertToPng(ddsBytes, true, true);
+                            var pngBytes = pngStream.ToArray();
 
-                    using var ms = DdsFile.MergeToStream(entry.Name, p4kFileSystem);
-                    var ddsBytes = ms.ToArray();
-                    using var pngStream = DdsFile.ConvertToPng(ddsBytes, true, true);
-                    
-                    var pngBytes = pngStream.ToArray();
-                    File.WriteAllBytes(pngOutputPath, pngBytes);
-                    processedCount++;
+                            var relPath = entry.Name.Substring(0, entry.Name.LastIndexOf('\\'));
+                            var pngOutputFolderPath = Path.Combine(outputDir, relPath);
+                            var pngOutputPath = Path.Combine(outputDir, entry.Name).Replace(".dds", ".png");
+
+                            Directory.CreateDirectory(pngOutputFolderPath);
+                            File.WriteAllBytes(pngOutputPath, pngBytes);
+                            var safeProcessedCount = Interlocked.Increment(ref processedCount);
+
+                            if (safeProcessedCount % progressPercentage == 0)
+                            {
+                                console.Output.Write($"Progress: {safeProcessedCount} / {totalCount} {safeProcessedCount / progressPercentage * 10}%\r");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Interlocked.Increment(ref failedCount);
+                            console.Output.WriteLine($"Failed to save DDS as PNG: {entry.Name} - {ex.Message}");
+                        }
+                    });
                 }
-                catch (Exception ex)
+                else
                 {
-                    failedCount++;
-                    console.Output.WriteLine($"Failed to extract DDS: {entry.Name} - {ex.Message}");
-                }
-            }
+                    foreach (var entry in ddsEntriesToExtract)
+                    {
+                        try
+                        {
+                            using var ms = DdsFile.MergeToStream(entry.Name, p4kFileSystem);
+                            var ddsBytes = ms.ToArray();
+                            using var pngStream = DdsFile.ConvertToPng(ddsBytes, true, true);
+                            var pngBytes = pngStream.ToArray();
 
-            await console.Output.WriteLineAsync($"Extracted {processedCount} DDS files ({failedCount} failed).");
+                            var relPath = entry.Name.Substring(0, entry.Name.LastIndexOf('\\'));
+                            var pngOutputFolderPath = Path.Combine(outputDir, relPath);
+                            var pngOutputPath = Path.Combine(outputDir, entry.Name).Replace(".dds", ".png");
+
+                            Directory.CreateDirectory(pngOutputFolderPath);
+                            File.WriteAllBytes(pngOutputPath, pngBytes);
+                            processedCount++;
+
+                            if (processedCount % progressPercentage == 0)
+                            {
+                                console.Output.Write($"Progress: {processedCount} / {totalCount} {processedCount / progressPercentage * 10}%\r");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            failedCount++;
+                            console.Output.WriteLine($"Failed to save DDS as PNG: {entry.Name} - {ex.Message}");
+                        }
+                    }
+                }
+                console.Output.Write($"\r");
+                await console.Output.WriteLineAsync($"Extracted {processedCount} PNG files ({failedCount} failed).");
+            }
+            else
+            {
+                if (UseParallelConvertion)
+                {
+                    Parallel.ForEach(ddsEntriesToExtract,entry =>
+                    {
+                        try
+                        {
+                            using var ms = DdsFile.MergeToStream(entry.Name, p4kFileSystem);
+                            var ddsBytes = ms.ToArray();
+                            var relPath = entry.Name.Substring(0, entry.Name.LastIndexOf('\\'));
+
+                            var ddsOutputFolderPath = Path.Combine(outputDir, relPath);
+                            var ddsOutputPath = Path.Combine(outputDir, entry.Name);
+
+                            Directory.CreateDirectory(ddsOutputFolderPath);
+                            File.WriteAllBytes(ddsOutputPath, ddsBytes);
+                            var safeProcessedCount = Interlocked.Increment(ref processedCount);
+
+                            if (safeProcessedCount % progressPercentage == 0)
+                            {
+                                console.Output.Write($"Progress: {safeProcessedCount} / {totalCount} {safeProcessedCount / progressPercentage * 10}%\r");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Interlocked.Increment(ref failedCount);
+                            console.Output.WriteLine($"Failed to extract DDS: {entry.Name} - {ex.Message}");
+                        }
+                    });
+                }
+                else
+                {
+                    foreach (var entry in ddsEntriesToExtract)
+                    {
+                        try
+                        {
+                            using var ms = DdsFile.MergeToStream(entry.Name, p4kFileSystem);
+                            var ddsBytes = ms.ToArray();
+                            var relPath = entry.Name.Substring(0, entry.Name.LastIndexOf('\\'));
+
+                            var ddsOutputFolderPath = Path.Combine(outputDir, relPath);
+                            var ddsOutputPath = Path.Combine(outputDir, entry.Name);
+
+                            Directory.CreateDirectory(ddsOutputFolderPath);
+                            File.WriteAllBytes(ddsOutputPath, ddsBytes);
+                            processedCount++;
+                            if (processedCount % progressPercentage == 0)
+                            {
+                                console.Output.WriteLine($"Progress: {processedCount} / {totalCount} {processedCount / progressPercentage * 10}%\r");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            failedCount++;
+                            console.Output.WriteLine($"Failed to extract DDS: {entry.Name} - {ex.Message}");
+                        }
+                    }
+                }
+                console.Output.Write($"\r");
+                await console.Output.WriteLineAsync($"Extracted {processedCount} DDS files ({failedCount} failed).");
+            }
         }
         catch (Exception ex)
         {
@@ -434,18 +613,26 @@ public class DiffCommand : ICommand
         }
     }
 
-    private List<P4kEntry> GetBaseDdsEntries(P4kFile p4k)
+    private static List<P4kEntry> GetBaseDdsEntries(P4kFile p4k)
     {
+        /* return only dds and dds.a but not .ddna files (idk why because ddna files are written as _ddna.dds)
         return p4k.Entries
             .Where(e => e.Name.EndsWith(".dds", StringComparison.OrdinalIgnoreCase) || 
-                       e.Name.EndsWith(".dds.a", StringComparison.OrdinalIgnoreCase))
-            .Where(e => !e.Name.EndsWith(".ddna.dds", StringComparison.OrdinalIgnoreCase) &&
-                       !e.Name.EndsWith(".ddna.dds.n", StringComparison.OrdinalIgnoreCase))
-            .Where(e => !char.IsDigit(e.Name[^1]))
+                       e.Name.EndsWith(".dds.a", StringComparison.OrdinalIgnoreCase)) // Shouldn't be present as dds.a aren't processable
+            .Where(e => !e.Name.EndsWith(".ddna.dds", StringComparison.OrdinalIgnoreCase) && // Doesn't filter anything as there is no .ddna.dds files, only _ddna.dds
+                       !e.Name.EndsWith(".ddna.dds.n", StringComparison.OrdinalIgnoreCase)) // Doesn't filter anything as file ends with s or a, not n
+            .Where(e => !char.IsDigit(e.Name[^1])) // Doesn't filter anything as file ends with s or a, not a number
+            .ToList();
+        */
+
+                            // Only select .dds files, ignoring .dds.a or .dds.n
+                            return p4k.Entries
+            .Where(e => e.Name.EndsWith(".dds", StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
 
-    private string GetPreviousP4kPath(string diffAgainst)
+
+    private static string GetPreviousP4kPath(string diffAgainst)
     {
         // If it's a file path, use it directly
         if (File.Exists(diffAgainst))

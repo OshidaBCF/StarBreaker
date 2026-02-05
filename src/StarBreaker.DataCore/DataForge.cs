@@ -39,7 +39,6 @@ public class DataForge<T>
     private readonly List<DataCoreTypeNode> _rootNodes;
     public IDataCoreBinary<T> DataCore { get; }
 
-
     public DataForge(IDataCoreBinary<T> dataCore)
     {
         DataCore = dataCore;
@@ -114,26 +113,46 @@ public class DataForge<T>
         progress?.Report(1);
     }
 
-    public void ExtractAllParallel(string outputFolder, string? fileNameFilter = null, IProgress<double>? progress = null)
+    public void ExtractAllParallel(string outputFolder, string? fileNameFilter = null, IProgress<double>? progress = null, bool singleThreaded = false)
     {
         var progressValue = 0;
         var recordsByFileName = GetRecordsByFileName(fileNameFilter);
         var total = recordsByFileName.Count;
 
-        Parallel.ForEach(recordsByFileName, kvp =>
+        if (singleThreaded)
         {
-            var (fileName, record) = kvp;
-            var filePath = Path.Combine(outputFolder, fileName);
+            foreach (var kvp in recordsByFileName)
+            {
+                var (fileName, record) = kvp;
+                var filePath = Path.Combine(outputFolder, fileName);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
-            DataCore.SaveRecordToFile(record, filePath);
+                DataCore.SaveRecordToFile(record, filePath);
 
-            var currentProgress = Interlocked.Increment(ref progressValue);
-            //only report progress every 1000 records and when we are done
-            if (currentProgress == total || currentProgress % 1000 == 0)
-                progress?.Report(currentProgress / (double)total);
-        });
+                var currentProgress = progressValue++;
+                //only report progress every 1000 records and when we are done
+                if (currentProgress == total || currentProgress % 1000 == 0)
+                    progress?.Report(currentProgress / (double)total);
+            }
+        }
+        else
+        {
+            Parallel.ForEach(recordsByFileName, kvp =>
+            {
+                var (fileName, record) = kvp;
+                var filePath = Path.Combine(outputFolder, fileName);
+
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+
+                DataCore.SaveRecordToFile(record, filePath);
+
+                var currentProgress = Interlocked.Increment(ref progressValue);
+                //only report progress every 1000 records and when we are done
+                if (currentProgress == total || currentProgress % 1000 == 0)
+                    progress?.Report(currentProgress / (double)total);
+            });
+        }
 
         progress?.Report(1);
     }
@@ -146,12 +165,12 @@ public class DataForge<T>
         progress?.Report(progressValue);
 
         foreach (var rootNode in _rootNodes)
-            ExtractTypeNode(rootNode, outputFolder, ref progressValue, progress);
+            ExtractTypeNode(rootNode, outputFolder, ref progressValue, total, progress);
 
-        progress?.Report(total);
+        progress?.Report(1);
     }
 
-    private void ExtractTypeNode(DataCoreTypeNode node, string currentDirectory, ref int progressValue, IProgress<double>? progress)
+    private void ExtractTypeNode(DataCoreTypeNode node, string currentDirectory, ref int progressValue, int total, IProgress<double>? progress)
     {
         var structDef = node.StructDefinition;
         var nodeName = structDef.GetName(DataCore.Database);
@@ -173,37 +192,56 @@ public class DataForge<T>
         DataCore.SaveStructToFile(node.Index, filePath);
 
         progressValue++;
-        progress?.Report(progressValue);
+        progress?.Report(progressValue / (double)total);
 
         foreach (var child in node.Children)
         {
-            ExtractTypeNode(child, Path.Combine(currentDirectory, nodeName), ref progressValue, progress);
+            ExtractTypeNode(child, Path.Combine(currentDirectory, nodeName), ref progressValue, total, progress);
         }
     }
 
-    public void ExtractEnumsParallel(string outputFolder, IProgress<double>? progress = null)
+    public void ExtractEnumsParallel(string outputFolder, IProgress<double>? progress = null, bool singleThreaded = false)
     {
         var progressValue = 0;
         var total = DataCore.Database.EnumDefinitions.Length;
 
         progress?.Report(progressValue);
-
-        Parallel.For(0, DataCore.Database.EnumDefinitions.Length, i =>
+        if (singleThreaded)
         {
-            var enumDef = DataCore.Database.EnumDefinitions[i];
-            var enumName = enumDef.GetName(DataCore.Database);
-            var filePath = Path.Combine(outputFolder, $"{enumName}.xml");
+            for(var i = 0; i < DataCore.Database.EnumDefinitions.Length; i++)
+            {
+                var enumDef = DataCore.Database.EnumDefinitions[i];
+                var enumName = enumDef.GetName(DataCore.Database);
+                var filePath = Path.Combine(outputFolder, $"{enumName}.xml");
 
-            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
-            DataCore.SaveEnumToFile(i, filePath);
+                DataCore.SaveEnumToFile(i, filePath);
 
-            var currentProgress = Interlocked.Increment(ref progressValue);
-            //only report progress every 1000 records and when we are done
-            if (currentProgress == total || currentProgress % 1000 == 0)
-                progress?.Report(currentProgress / (double)total);
-        });
+                var currentProgress = progressValue++;
+                //only report progress every 100 records and when we are done
+                if (currentProgress == total || currentProgress % 100 == 0)
+                    progress?.Report(currentProgress / (double)total);
+            }
+        }
+        else
+        {
+            Parallel.For(0, DataCore.Database.EnumDefinitions.Length, i =>
+            {
+                var enumDef = DataCore.Database.EnumDefinitions[i];
+                var enumName = enumDef.GetName(DataCore.Database);
+                var filePath = Path.Combine(outputFolder, $"{enumName}.xml");
 
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+
+                DataCore.SaveEnumToFile(i, filePath);
+
+                var currentProgress = Interlocked.Increment(ref progressValue);
+                //only report progress every 100 records and when we are done
+                if (currentProgress == total || currentProgress % 100 == 0)
+                    progress?.Report(currentProgress / (double)total);
+            });
+        }
         progress?.Report(1);
     }
 

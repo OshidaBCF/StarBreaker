@@ -1,5 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36623.8
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StarBreaker.Chf", "StarBreaker.Chf\StarBreaker.Chf.csproj", "{78EE6C08-C0CB-3CC6-D0E3-BBE4D4D191AF}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StarBreaker.Cli", "StarBreaker.Cli\StarBreaker.Cli.csproj", "{EA3E650F-6583-86CA-B7B1-4C94C2E98BF2}"
@@ -26,16 +29,16 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StarBreaker", "StarBreaker\
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{089100B1-113F-4E66-888A-E83F3999EAFD}"
 	ProjectSection(SolutionItems) = preProject
-		Directory.Build.props = Directory.Build.props
-		..\README.md = ..\README.md
-		..\.gitignore = ..\.gitignore
-		..\crc32c.html = ..\crc32c.html
-		..\scripts\mitm.ps1 = ..\scripts\mitm.ps1
-		..\scripts\stream-sc.py = ..\scripts\stream-sc.py
-		..\.github\workflows\build.yml = ..\.github\workflows\build.yml
 		.editorconfig = .editorconfig
+		..\.gitignore = ..\.gitignore
+		..\.github\workflows\build.yml = ..\.github\workflows\build.yml
+		..\crc32c.html = ..\crc32c.html
 		..\scripts\diff.ps1 = ..\scripts\diff.ps1
+		Directory.Build.props = Directory.Build.props
 		..\FORMATS.md = ..\FORMATS.md
+		..\scripts\mitm.ps1 = ..\scripts\mitm.ps1
+		..\README.md = ..\README.md
+		..\scripts\stream-sc.py = ..\scripts\stream-sc.py
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StarBreaker.GrpcClient", "StarBreaker.GrpcClient\StarBreaker.GrpcClient.csproj", "{5B8D1493-7025-4EF3-B56C-70905A5787DF}"
@@ -116,5 +119,11 @@ Global
 		{AE59E152-60A0-49FC-9A12-8B5CE3A84136}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AE59E152-60A0-49FC-9A12-8B5CE3A84136}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AE59E152-60A0-49FC-9A12-8B5CE3A84136}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3A2EBDC0-40D8-45EF-9592-B74DF3035B6B}
 	EndGlobalSection
 EndGlobal

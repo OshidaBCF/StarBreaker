@@ -79,11 +79,15 @@ public class DataCoreExtractCommand : ICommand
             _ => DataForge.FromDcbStreamXml(dcbStream),
         };
 
+        var tagDatabasePath = Path.Combine(OutputDirectory, "..\\TagDatabase\\Data\\Libs\\Foundry\\Records\\TagDatabase\\TagDatabase.TagDatabase.xml");
+        df.DataCore.createTagDatabase(tagDatabasePath);
+
         console.Output.WriteLine("DataCore loaded.");
         console.Output.WriteLine($"Exporting as {TextFormat ?? "xml"} to {OutputDirectory}...");
 
         var sw = Stopwatch.StartNew();
-        df.ExtractAllParallel(OutputDirectory, Filter, new ProgressBar(console));
+        var singleThreadedDebug = false;
+        df.ExtractAllParallel(OutputDirectory, Filter, new ProgressBar(console), singleThreadedDebug);
         if (!string.IsNullOrEmpty(OutputFolderTypes))
         {
             console.Output.WriteLine("Exporting  types...");
@@ -93,7 +97,7 @@ public class DataCoreExtractCommand : ICommand
         if (!string.IsNullOrEmpty(OutputFolderEnums))
         {
             console.Output.WriteLine("Exporting enums...");
-            df.ExtractEnumsParallel(OutputFolderEnums, new ProgressBar(console));
+            df.ExtractEnumsParallel(OutputFolderEnums, new ProgressBar(console), singleThreadedDebug);
         }
 
         sw.Stop();

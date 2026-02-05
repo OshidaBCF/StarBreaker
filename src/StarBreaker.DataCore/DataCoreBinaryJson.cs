@@ -1,7 +1,10 @@
-﻿using System.Diagnostics;
-using System.Text;
-using System.Text.Json;
 using StarBreaker.Common;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Xml.Linq;
 
 namespace StarBreaker.DataCore;
 
@@ -14,12 +17,40 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         Database = db;
     }
 
+
+    private Dictionary<string, string> tagDatabaseDictionary = new();
+
+    public void createTagDatabase(string tagDatabasePath)
+    {
+        // Create Tag Database from XML
+        using var fileStream = new FileStream(tagDatabasePath, FileMode.Open);
+        var tagDatabaseXML = XDocument.Load(fileStream);
+        fileStream.Close();
+
+        void walkThoughChildrens(XElement root)
+        {
+            foreach (var item in root.Elements())
+            {
+                if (item.Name.LocalName == "Record" && item.Attribute("tagName") != null)
+                {
+                    var GUID = item.Attribute("__guid").Value;
+                    var tagName = item.Attribute("tagName").Value;
+                    tagDatabaseDictionary[GUID] = tagName;
+                }
+
+                walkThoughChildrens(item);
+            }
+        }
+
+        walkThoughChildrens(tagDatabaseXML.Root.Element("tags")!);
+    }
     public void SaveRecordToFile(DataCoreRecord record, string path)
     {
         using var fileStream = new FileStream(Path.ChangeExtension(path, "json"), FileMode.Create);
         using var writer = new Utf8JsonWriter(fileStream, new JsonWriterOptions
         {
             Indented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         });
 
         WriteInner(record, writer);
@@ -31,6 +62,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         using var writer = new Utf8JsonWriter(fileStream, new JsonWriterOptions
         {
             Indented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         });
         
         var structDefinition = Database.StructDefinitions[structIndex];
@@ -58,6 +90,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         using var writer = new Utf8JsonWriter(fileStream, new JsonWriterOptions
         {
             Indented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         });
         
         var enumDefinition = Database.EnumDefinitions[enumIndex];
@@ -165,7 +198,15 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
             case DataType.Locale: context.Writer.WriteString(propName, reader.Read<DataCoreStringId>().ToString(Database)); break;
             case DataType.Double: context.Writer.WriteNumber(propName, reader.ReadDouble()); break;
             case DataType.Single: context.Writer.WriteNumber(propName, reader.ReadSingle()); break;
-            case DataType.String: context.Writer.WriteString(propName, reader.Read<DataCoreStringId>().ToString(Database)); break;
+            case DataType.String:
+                var stringToWrite = reader.Read<DataCoreStringId>().ToString(Database);
+                if (stringToWrite != string.Empty)
+                {
+                    context.Writer.WriteString(propName, stringToWrite);
+                    break;
+                }
+                context.Writer.WriteNull(propName);
+                break;
             case DataType.UInt64: context.Writer.WriteNumber(propName, reader.ReadUInt64()); break;
             case DataType.UInt32: context.Writer.WriteNumber(propName, reader.ReadUInt32()); break;
             case DataType.UInt16: context.Writer.WriteNumber(propName, reader.ReadUInt16()); break;
@@ -187,6 +228,11 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
 
         var propName = prop.GetName(Database);
         context.Writer.WriteStartArray(propName);
+        if (count == 0)
+        {
+            context.Writer.WriteEndArray();
+            return;
+        }
 
         for (var i = firstIndex; i < firstIndex + count; i++)
         {
@@ -265,16 +311,28 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         }
 
         //if we get here, we're referencing a part of another file. mention the file and some details
-        if (propName == null)
-            context.Writer.WriteStartObject();
+        
+        var replaceTagInJsons = true;
+        if (replaceTagInJsons && record.GetFileName(Database).EndsWith("tagdatabase.tagdatabase.xml"))
+        {
+            
+            if (propName == null)
+                context.Writer.WriteStringValue(tagDatabaseDictionary[record.Id.ToString()]);
+            else
+                context.Writer.WriteString(propName, tagDatabaseDictionary[record.Id.ToString()]);
+        }
         else
-            context.Writer.WriteStartObject(propName);
+        {
+            if (propName == null)
+                context.Writer.WriteStartObject();
+            else
+                context.Writer.WriteStartObject(propName);
 
-        context.Writer.WriteString("_RecordPath_", Path.ChangeExtension(DataCoreUtils.ComputeRelativePath(record.GetFileName(Database), context.Path), "json"));
-        context.Writer.WriteString("_RecordName_", record.GetName(Database));
-        context.Writer.WriteString("_RecordId_", record.Id.ToString());
-
-        context.Writer.WriteEndObject();
+            context.Writer.WriteString("_RecordPath_", Path.ChangeExtension(DataCoreUtils.ComputeRelativePath(record.GetFileName(Database), context.Path), "json"));
+            context.Writer.WriteString("_RecordName_", record.GetName(Database));
+            context.Writer.WriteString("_RecordId_", record.Id.ToString());
+            context.Writer.WriteEndObject();
+        }
     }
 
     private void WriteFromStrongPointer(DataCorePointer strongPointer, Context context, string? propName)

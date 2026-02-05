@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -48,6 +48,7 @@ public sealed class P4kFile : IP4kFile
         progress?.Report(0);
         using var reader = new BinaryReader(stream, Encoding.UTF8, false);
 
+        // Locate read from the back, EOCD is always at end of file
         var eocdLocation = reader.BaseStream.Locate(EOCDRecord.Magic);
         reader.BaseStream.Seek(eocdLocation, SeekOrigin.Begin);
         var eocd = reader.BaseStream.Read<EOCDRecord>();

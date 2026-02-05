@@ -1,11 +1,13 @@
-﻿using System.Globalization;
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Xml.Linq;
-using CliFx;
+﻿using CliFx;
 using CliFx.Attributes;
 using CliFx.Infrastructure;
 using StarBreaker.P4k;
+using System.Globalization;
+using System.IO;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Xml.Linq;
 
 namespace StarBreaker.Cli;
 
@@ -105,7 +107,11 @@ public class DumpP4kCommand : ICommand
                 Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
                 using var fs = File.OpenWrite(filePath);
-                using var writer = new Utf8JsonWriter(fs, new JsonWriterOptions { Indented = true });
+                using var writer = new Utf8JsonWriter(fs, new JsonWriterOptions
+                {
+                    Indented = true,
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                });
                 jsonDir.WriteTo(writer);
             }
         }

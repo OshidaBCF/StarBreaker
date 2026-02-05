@@ -8,12 +8,12 @@ public readonly struct EOCDRecord
     public static ReadOnlySpan<byte> Magic => [0x50, 0x4b, 0x05, 0x06 ];
 
     public readonly uint Signature;
-    public readonly ushort DiskNumber;
-    public readonly ushort StartDiskNumber;
-    public readonly ushort EntriesOnDisk;
-    public readonly ushort TotalEntries;
-    public readonly uint CentralDirectorySize;
-    public readonly uint CentralDirectoryOffset;
+    public readonly ushort DiskNumber; // is 0xFFFF if Zip64
+    public readonly ushort StartDiskNumber; // is 0xFFFF if Zip64
+    public readonly ushort EntriesOnDisk; // is 0xFFFF if Zip64
+    public readonly ushort TotalEntries; // is 0xFFFF if Zip64
+    public readonly uint CentralDirectorySize; // is 0xFFFFFFFF if Zip64
+    public readonly uint CentralDirectoryOffset; // is 0xFFFFFFFF if Zip64
     public readonly ushort CommentLength;
     
     public bool IsZip64 => DiskNumber == 0xFFFF || 
