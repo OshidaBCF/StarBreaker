@@ -11,6 +11,8 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
 using ZstdSharp;
 using Avalonia.Controls;
 using Avalonia.Controls.Models.TreeDataGrid;
@@ -899,6 +901,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
     partial void OnGameFolderChanged(string value)
     {
         SaveSettings();
+        OnPropertyChanged(nameof(CanGeneratePlayerLoadouts));
     }
 
     partial void OnOutputDirectoryChanged(string value)
@@ -909,6 +912,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
     partial void OnSelectedChannelChanged(string value)
     {
         SaveSettings();
+        OnPropertyChanged(nameof(CanGeneratePlayerLoadouts));
     }
 
     partial void OnTextFormatChanged(string value)
@@ -1370,6 +1374,7 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
                     
                     // Notify that CanCreateReport has changed
                     OnPropertyChanged(nameof(CanCreateReport));
+                    OnPropertyChanged(nameof(CanGeneratePlayerLoadouts));
                     
                     var stats = DataCoreComparison.AnalyzeComparison(comparisonRoot);
                     ComparisonStatus = $"Comparison complete! Added: {stats.AddedFiles}, Removed: {stats.RemovedFiles}, Modified: {stats.ModifiedFiles}";
@@ -1462,6 +1467,11 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
     public bool CanExtractSelectedDataCoreFiles => SelectedDataCoreFiles.Any(f => f is DataCoreComparisonFileNode) && 
         !string.IsNullOrWhiteSpace(P4kOutputDirectory);
 
+    public bool CanGeneratePlayerLoadouts => _dataCoreComparisonRoot != null &&
+        _rightDataCoreDatabase != null &&
+        !string.IsNullOrWhiteSpace(GameFolder) &&
+        !string.IsNullOrWhiteSpace(SelectedChannel);
+
     private static bool IsAudioFile(string filePath)
     {
         var fileName = Path.GetFileName(filePath);
@@ -1473,6 +1483,33 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
         var fileName = Path.GetFileName(filePath);
         return fileName.EndsWith(".socpak", StringComparison.OrdinalIgnoreCase) || 
                fileName.EndsWith(".pak", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class ArmorPieceInfo
+    {
+        public required string ItemName { get; init; }
+        public required string Slot { get; init; }
+        public required string DisplayName { get; init; }
+        public required string SourcePath { get; init; }
+    }
+
+    private sealed class ArmorSetInfo
+    {
+        public required string Key { get; init; }
+        public required string DisplayName { get; init; }
+        public Dictionary<string, ArmorPieceInfo> Pieces { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public bool IsComplete =>
+            Pieces.ContainsKey("Armor_Helmet") &&
+            Pieces.ContainsKey("Armor_Arms") &&
+            Pieces.ContainsKey("Armor_Torso") &&
+            Pieces.ContainsKey("Armor_Legs");
+    }
+
+    private sealed class FpsWeaponEntry
+    {
+        public required string ItemName { get; init; }
+        public required string SourcePath { get; init; }
+        public required ItemInfo Info { get; init; }
     }
 
     [RelayCommand]
@@ -2110,6 +2147,269 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
             _logger.LogDebug(ex, "Failed to extract weapon info for {FileName}", fileNode.Name);
             return null;
         }
+    }
+
+    private IEnumerable<ArmorSetInfo> BuildAddedArmorSets()
+    {
+        if (_dataCoreComparisonRoot == null || _rightDataCoreDatabase == null)
+        {
+            return Array.Empty<ArmorSetInfo>();
+        }
+
+        var armorDirectories = new[]
+        {
+            "libs/foundry/records/entities/scitem/characters/human/armor/",
+            "libs/foundry/records/entities/scitem/characters/human/starwear/helmet/"
+        };
+
+        var sets = new Dictionary<string, ArmorSetInfo>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in _dataCoreComparisonRoot.GetAllFiles()
+                     .Where(f => f.Status == DataCoreComparisonStatus.Added)
+                     .Where(f => armorDirectories.Any(dir => f.FullPath.StartsWith(dir, StringComparison.OrdinalIgnoreCase)))
+                     .OfType<DataCoreComparisonFileNode>())
+        {
+            if (file.RightRecord == null)
+            {
+                continue;
+            }
+
+            var xmlContent = GenerateDataCoreRecordPreview(file.RightRecord.Value, _rightDataCoreDatabase);
+            var slot = TryExtractArmorSlot(xmlContent);
+            if (slot == null)
+            {
+                continue;
+            }
+
+            var itemName = Path.GetFileNameWithoutExtension(file.FullPath);
+            var setKey = BuildArmorSetKey(itemName);
+            if (!sets.TryGetValue(setKey, out var set))
+            {
+                set = new ArmorSetInfo
+                {
+                    Key = setKey,
+                    DisplayName = CreateArmorSetDisplayName(setKey)
+                };
+                sets[setKey] = set;
+            }
+
+            if (set.Pieces.ContainsKey(slot))
+            {
+                continue;
+            }
+
+            set.Pieces[slot] = new ArmorPieceInfo
+            {
+                ItemName = itemName,
+                Slot = slot,
+                DisplayName = ExtractDisplayName(xmlContent, file.Name),
+                SourcePath = file.FullPath
+            };
+        }
+
+        return sets.Values
+            .Where(set => set.Pieces.Count > 0)
+            .OrderByDescending(set => set.IsComplete)
+            .ThenByDescending(set => set.Pieces.Count)
+            .ThenBy(set => set.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private IEnumerable<FpsWeaponEntry> BuildAddedFpsWeapons()
+    {
+        if (_dataCoreComparisonRoot == null || _rightDataCoreDatabase == null)
+        {
+            return Array.Empty<FpsWeaponEntry>();
+        }
+
+        var fpsWeaponDirectory = "libs/foundry/records/entities/scitem/weapons/fps_weapons";
+
+        return _dataCoreComparisonRoot.GetAllFiles()
+            .Where(f => f.Status == DataCoreComparisonStatus.Added)
+            .Where(f => f.FullPath.StartsWith(fpsWeaponDirectory, StringComparison.OrdinalIgnoreCase))
+            .OfType<DataCoreComparisonFileNode>()
+            .Select(file =>
+            {
+                var info = ExtractWeaponInfo(file, _rightDataCoreDatabase);
+                return info == null
+                    ? null
+                    : new FpsWeaponEntry
+                    {
+                        ItemName = Path.GetFileNameWithoutExtension(file.FullPath),
+                        SourcePath = file.FullPath,
+                        Info = info
+                    };
+            })
+            .Where(entry => entry != null)
+            .Cast<FpsWeaponEntry>()
+            .OrderBy(entry => entry.Info.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? TryExtractArmorSlot(string xmlContent)
+    {
+        var match = Regex.Match(
+            xmlContent,
+            @"<itemPort>\s*(Armor_(?:Undersuit|Helmet|Arms|Torso|Legs))\s*</itemPort>",
+            RegexOptions.IgnoreCase);
+
+        return match.Success ? match.Groups[1].Value.Trim() : null;
+    }
+
+    private static string BuildArmorSetKey(string itemName)
+    {
+        var normalized = itemName;
+        normalized = Regex.Replace(normalized, "_undersuit_helmet_", "_", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, "_undersuit_", "_", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, "_(arms|core|legs|helmet)_", "_", RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, "_(arms|core|legs|helmet)$", string.Empty, RegexOptions.IgnoreCase);
+        normalized = Regex.Replace(normalized, "_+", "_");
+        return normalized.Trim('_');
+    }
+
+    private static string CreateArmorSetDisplayName(string setKey)
+    {
+        return setKey.Replace("_", " ");
+    }
+
+    private static XElement CreateLoadoutItem(string portName, string itemName, params object[] content)
+    {
+        var element = new XElement("Item",
+            new XAttribute("portName", portName),
+            new XAttribute("itemName", itemName));
+        if (content.Length > 0)
+        {
+            element.Add(content);
+        }
+
+        return element;
+    }
+
+    private static XElement CreateDefaultHeadItem()
+    {
+        return new XElement("Item",
+            new XAttribute("portName", "Head_ItemPort"),
+            new XAttribute("itemName", "PU_Protos_Head"),
+            new XAttribute("tag", "Char_Head"),
+            new XElement("Items",
+                CreateLoadoutItem("Skin_Variant", "Skin_Var_09", new XAttribute("tag", "Char_Skin_Color")),
+                CreateLoadoutItem("Teeth_ItemPort", "Head_Teeth"),
+                CreateLoadoutItem("Eyes_ItemPort", "Head_Eyes_Blue_03",
+                    new XElement("Items",
+                        CreateLoadoutItem("Lens_ItemPort", "Default_LensDisplay_PU")))));
+    }
+
+    private static XElement CreateArmorLoadoutElement(ArmorSetInfo set)
+    {
+        var undersuit = set.Pieces.TryGetValue("Armor_Undersuit", out var undersuitPiece)
+            ? undersuitPiece.ItemName
+            : "cds_undersuit_01_01_01";
+
+        var setItems = new List<object>();
+
+        if (set.Pieces.TryGetValue("Armor_Arms", out var arms))
+        {
+            setItems.Add(CreateLoadoutItem("Armor_Arms", arms.ItemName));
+        }
+
+        if (set.Pieces.TryGetValue("Armor_Helmet", out var helmet))
+        {
+            setItems.Add(CreateLoadoutItem("Armor_Helmet", helmet.ItemName,
+                new XElement("Items",
+                    CreateLoadoutItem("visor_display", "Default_VisorDisplay"))));
+        }
+
+        if (set.Pieces.TryGetValue("Armor_Legs", out var legs))
+        {
+            setItems.Add(CreateLoadoutItem("Armor_Legs", legs.ItemName));
+        }
+
+        if (set.Pieces.TryGetValue("Armor_Torso", out var torso))
+        {
+            setItems.Add(CreateLoadoutItem("Armor_Torso", torso.ItemName));
+        }
+
+        var root = new XElement("Loadout",
+            new XElement("Items",
+                new XElement("Item",
+                    new XAttribute("portName", "Body_ItemPort"),
+                    new XAttribute("itemName", "m_body_01"),
+                    new XElement("Items",
+                        new XElement("Item",
+                            new XAttribute("portName", "Armor_Undersuit"),
+                            new XAttribute("itemName", undersuit),
+                            new XElement("Items", setItems)),
+                        CreateDefaultHeadItem()))));
+
+        return root;
+    }
+
+    private static string BuildArmorLoadoutFileName(ArmorSetInfo set)
+    {
+        var sanitized = string.Join("_", set.Key
+            .Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))
+            .Trim();
+        return string.IsNullOrWhiteSpace(sanitized) ? "generated_loadout.xml" : $"{sanitized}.xml";
+    }
+
+    private static IReadOnlyList<string> WriteGeneratedArmorLoadouts(string outputDirectory, IReadOnlyCollection<ArmorSetInfo> armorSets)
+    {
+        var settings = new XmlWriterSettings
+        {
+            Encoding = Encoding.Unicode,
+            Indent = true,
+            OmitXmlDeclaration = false
+        };
+
+        var writtenFiles = new List<string>(armorSets.Count);
+
+        foreach (var set in armorSets)
+        {
+            var outputPath = Path.Combine(outputDirectory, BuildArmorLoadoutFileName(set));
+            var document = new XDocument(
+                new XDeclaration("1.0", "utf-16", null),
+                CreateArmorLoadoutElement(set));
+
+            using var writer = XmlWriter.Create(outputPath, settings);
+            document.Save(writer);
+            writtenFiles.Add(outputPath);
+        }
+
+        return writtenFiles;
+    }
+
+    private static void WriteGeneratedFpsWeapons(string outputPath, IReadOnlyCollection<FpsWeaponEntry> weapons)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("StarBreaker New FPS Weapons");
+        builder.AppendLine($"Generated: {DateTime.Now:O}");
+        builder.AppendLine();
+
+        if (weapons.Count == 0)
+        {
+            builder.AppendLine("No new FPS weapons were detected in the compared DataCore.");
+        }
+        else
+        {
+            foreach (var weapon in weapons)
+            {
+                var sizePrefix = weapon.Info.Size > 0 ? $"S{weapon.Info.Size} " : string.Empty;
+                builder.AppendLine($"{sizePrefix}{weapon.Info.DisplayName}");
+                builder.AppendLine($"  Item: {weapon.ItemName}");
+                builder.AppendLine($"  Path: {weapon.SourcePath}");
+                if (!string.IsNullOrWhiteSpace(weapon.Info.Description))
+                {
+                    builder.AppendLine($"  {weapon.Info.Description}");
+                }
+                if (!string.IsNullOrWhiteSpace(weapon.Info.Manufacturer))
+                {
+                    builder.AppendLine($"  Manufacturer: {weapon.Info.Manufacturer}");
+                }
+                builder.AppendLine();
+            }
+        }
+
+        File.WriteAllText(outputPath, builder.ToString(), Encoding.UTF8);
     }
 
     private string ExtractDisplayName(string xmlContent, string fallbackName)
@@ -3385,6 +3685,66 @@ public sealed partial class DiffTabViewModel : PageViewModelBase
         {
             _logger.LogError(ex, "Error generating SOCPAK file list");
             ComparisonStatus = $"Error generating SOCPAK list: {ex.Message}";
+        }
+        finally
+        {
+            IsComparing = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task GeneratePlayerLoadouts()
+    {
+        if (!CanGeneratePlayerLoadouts)
+        {
+            _logger.LogWarning("Cannot generate player loadouts - DataCore comparison or channel settings missing");
+            return;
+        }
+
+        try
+        {
+            IsComparing = true;
+            ComparisonStatus = "Generating armor loadouts and FPS weapon list...";
+
+            await Task.Run(() =>
+            {
+                try
+                {
+                    var channelFolder = GetChannelFolderPath(GameFolder, SelectedChannel);
+                    if (string.IsNullOrWhiteSpace(channelFolder) || !Directory.Exists(channelFolder))
+                    {
+                        throw new DirectoryNotFoundException($"Selected channel folder not found: {channelFolder}");
+                    }
+
+                    var playerLoadoutsFolder = Path.Combine(channelFolder, "Data", "Scripts", "Loadouts", "Player");
+                    Directory.CreateDirectory(playerLoadoutsFolder);
+
+                    var armorSets = BuildAddedArmorSets().ToArray();
+                    var fpsWeapons = BuildAddedFpsWeapons().ToArray();
+
+                    var weaponOutputPath = Path.Combine(playerLoadoutsFolder, "starbreaker_new_fps_weapons.txt");
+
+                    var armorOutputPaths = WriteGeneratedArmorLoadouts(playerLoadoutsFolder, armorSets);
+                    WriteGeneratedFpsWeapons(weaponOutputPath, fpsWeapons);
+
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        ComparisonStatus = $"Generated {armorSets.Length} armor loadout(s) and {fpsWeapons.Length} FPS weapon entry/entries.";
+                        AddLogMessage($"Armor loadouts written to {playerLoadoutsFolder}: {armorOutputPaths.Count} file(s)");
+                        AddLogMessage($"FPS weapons list written to: {weaponOutputPath}");
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to generate player loadouts");
+                    Dispatcher.UIThread.Post(() => ComparisonStatus = $"Loadout generation failed: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating player loadouts");
+            ComparisonStatus = $"Error generating player loadouts: {ex.Message}";
         }
         finally
         {

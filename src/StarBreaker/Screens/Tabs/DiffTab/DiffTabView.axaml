@@ -417,7 +417,7 @@
                 Padding="15" 
                 Margin="0,0,0,15"
                 IsVisible="{Binding IsDataCoreComparisonMode}">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="DataCore Comparison" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
                     <TextBlock Text="This will extract DataCore from the selected P4K files and compare them to show added, removed, and modified records."
@@ -456,6 +456,17 @@
                         FontWeight="SemiBold"
                         Margin="10,0,0,0"
                         ToolTip.Tip="Extract currently selected DataCore files"/>
+
+                <Button Grid.Column="4"
+                        Content="🛡 Generate Loadouts"
+                        Command="{Binding GeneratePlayerLoadoutsCommand}"
+                        IsEnabled="{Binding CanGeneratePlayerLoadouts}"
+                        VerticalAlignment="Center"
+                        MinWidth="170"
+                        MinHeight="35"
+                        FontWeight="SemiBold"
+                        Margin="10,0,0,0"
+                        ToolTip.Tip="Create an armor-loadout catalog XML and a new FPS weapons text list in the selected channel's Data\\Scripts\\Loadouts\\Player folder"/>
             </Grid>
         </Border>
         
