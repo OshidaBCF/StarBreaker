@@ -466,7 +466,7 @@
                         MinHeight="35"
                         FontWeight="SemiBold"
                         Margin="10,0,0,0"
-                        ToolTip.Tip="Create an armor-loadout catalog XML and a new FPS weapons text list in the selected channel's Data\\Scripts\\Loadouts\\Player folder"/>
+                        ToolTip.Tip="Create armor loadout XMLs, FPS weapon loadout XMLs, and a new FPS weapons text list in the selected channel's Data\\Scripts\\Loadouts\\Player folder"/>
             </Grid>
         </Border>
         
