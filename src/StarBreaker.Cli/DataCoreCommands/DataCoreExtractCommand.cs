@@ -27,11 +27,8 @@ public class DataCoreExtractCommand : ICommand
     [CommandOption("text-format", 't', Description = "Output text format", EnvironmentVariable = "TEXT_FORMAT")]
     public string? TextFormat { get; init; }
 
-    [CommandOption("extract-types", 'e', Description = "Extract types to a separate folder", EnvironmentVariable = "OUTPUT_TYPES")]
-    public string? OutputFolderTypes { get; init; }
-
-    [CommandOption("extract-enums", 'n', Description = "Extract enums to a separate folder", EnvironmentVariable = "OUTPUT_ENUMS")]
-    public string? OutputFolderEnums { get; init; }
+    [CommandOption("replace-tags", Description = "Replace tags in Datacore with their actual value from TagDatabase (only in JSON text format)", EnvironmentVariable = "REPLACE_TAGS")]
+    public bool ReplaceTagsInDatacore { get; init; }
 
     public ValueTask ExecuteAsync(IConsole console)
     {
@@ -79,32 +76,36 @@ public class DataCoreExtractCommand : ICommand
             _ => DataForge.FromDcbStreamXml(dcbStream),
         };
 
-        // Extract and save in ram the "tagdatabase" for in file replacement
-        var tagDatabasePath = Path.Combine(OutputDirectory, "..\\TagDatabase\\Data\\Libs\\Foundry\\Records\\TagDatabase\\TagDatabase.TagDatabase.xml");
-        df.DataCore.createTagDatabase(tagDatabasePath);
-
-        console.Output.WriteLine("DataCore loaded.");
+        df.DataCore.ReplaceTagsInDatacore = ReplaceTagsInDatacore;
+        if (ReplaceTagsInDatacore)
+        {
+            // Extract tagdatabase in ram for in file replacement
+            var tagDatabasePath = Path.Combine(OutputDirectory, "TagDatabase\\Data\\Libs\\Foundry\\Records\\TagDatabase\\TagDatabase.TagDatabase.xml");
+            df.DataCore.createTagDatabase(tagDatabasePath);
+        }
+        
         console.Output.WriteLine($"Exporting as {TextFormat ?? "xml"} to {OutputDirectory}...");
 
         var sw = Stopwatch.StartNew();
         var singleThreadedDebug = false; // To use for debugging as it doesn't like threads
-        df.ExtractAllParallel(OutputDirectory, Filter, new ProgressBar(console), singleThreadedDebug);
-        if (!string.IsNullOrEmpty(OutputFolderTypes))
-        {
-            console.Output.WriteLine("Exporting  types...");
-            df.ExtractTypesParallel(OutputFolderTypes, new ProgressBar(console));
-        }
 
-        if (!string.IsNullOrEmpty(OutputFolderEnums))
-        {
-            console.Output.WriteLine("Exporting enums...");
-            df.ExtractEnumsParallel(OutputFolderEnums, new ProgressBar(console), singleThreadedDebug);
-        }
+        var dataCorePath = Path.Combine(OutputDirectory, "DataCore");
+        var dataCoreEnumsPath = Path.Combine(OutputDirectory, "DataCoreEnums");
+        var dataCoreTypesPath = Path.Combine(OutputDirectory, "DataCoreTypes");
+
+        console.Output.WriteLine("Extracting DataCore...");
+        df.ExtractAllParallel(dataCorePath, Filter, new ProgressBar(console), singleThreadedDebug);
+
+        console.Output.WriteLine("Extracting Enums...");
+        df.ExtractEnumsParallel(dataCoreEnumsPath, new ProgressBar(console), singleThreadedDebug);
+
+        console.Output.WriteLine("Extracting Types...");
+        df.ExtractTypesParallel(dataCoreTypesPath, new ProgressBar(console));
 
         sw.Stop();
 
         console.Output.WriteLine();
-        console.Output.WriteLine($"Export completed in {sw.ElapsedMilliseconds}ms.");
+        console.Output.WriteLine($"Export completed in {sw.ElapsedMilliseconds * 1000}s.");
 
         return default;
     }

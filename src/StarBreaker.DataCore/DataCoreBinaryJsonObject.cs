@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using StarBreaker.Common;
 
@@ -7,6 +7,7 @@ namespace StarBreaker.DataCore;
 public sealed class DataCoreBinaryJsonObject : IDataCoreBinary<JsonObject>
 {
     public DataCoreDatabase Database { get; }
+    public bool ReplaceTagsInDatacore { get; set; }
 
     public DataCoreBinaryJsonObject(DataCoreDatabase db)
     {

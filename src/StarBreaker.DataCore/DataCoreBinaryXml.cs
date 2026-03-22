@@ -8,6 +8,7 @@ namespace StarBreaker.DataCore;
 public sealed class DataCoreBinaryXml : IDataCoreBinary<string>
 {
     public DataCoreDatabase Database { get; }
+    public bool ReplaceTagsInDatacore { get; set; }
 
     public DataCoreBinaryXml(DataCoreDatabase db)
     {

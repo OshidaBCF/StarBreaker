@@ -50,7 +50,7 @@ public class DiffCommand : ICommand
     public string? DiffAgainst { get; init; }
 
     [CommandOption("replace-tags", Description = "Replace tags in Datacore with their actual value from TagDatabase (only in JSON text format)", EnvironmentVariable = "REPLACE_TAGS")]
-    public string? ReplaceTagsInDatacore { get; init; }
+    public bool ReplaceTagsInDatacore { get; init; }
 
     public async ValueTask ExecuteAsync(IConsole console)
     {
@@ -159,10 +159,9 @@ public class DiffCommand : ICommand
         var dcbExtract = new DataCoreExtractCommand
         {
             P4kFile = p4kFile,
-            OutputDirectory = Path.Combine(OutputDirectory, "DataCore"),
-            OutputFolderTypes = Path.Combine(OutputDirectory, "DataCoreTypes"),
-            OutputFolderEnums = Path.Combine(OutputDirectory, "DataCoreEnums"),
-            TextFormat = TextFormat
+            OutputDirectory = OutputDirectory,
+            TextFormat = TextFormat,
+            ReplaceTagsInDatacore = ReplaceTagsInDatacore
         };
         await dcbExtract.ExecuteAsync(fakeConsole);
         await console.Output.WriteLineAsync("DataCore extracted in " + sw.Elapsed);

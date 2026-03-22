@@ -11,12 +11,13 @@ namespace StarBreaker.DataCore;
 public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
 {
     public DataCoreDatabase Database { get; }
+    public bool ReplaceTagsInDatacore { get; set; }
 
     public DataCoreBinaryJson(DataCoreDatabase db)
     {
         Database = db;
     }
-
+    
     // Tag Dictionary
     private Dictionary<string, string> tagDatabaseDictionary = new();
 
@@ -319,11 +320,9 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
 
         //if we get here, we're referencing a part of another file. mention the file and some details
         
-        var replaceTagInJsons = true;
         // If we replace tags, and the current record reference teh tagdatabase, replace it
-        if (replaceTagInJsons && record.GetFileName(Database).EndsWith("tagdatabase.tagdatabase.xml"))
+        if (ReplaceTagsInDatacore && record.GetFileName(Database).EndsWith("tagdatabase.tagdatabase.xml") && tagDatabaseDictionary.ContainsKey(record.Id.ToString()))
         {
-            
             if (propName == null)
                 context.Writer.WriteStringValue(tagDatabaseDictionary[record.Id.ToString()]);
             else

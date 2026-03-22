@@ -1,4 +1,4 @@
-﻿using System.IO.Enumeration;
+using System.IO.Enumeration;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;

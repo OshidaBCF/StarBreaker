@@ -68,13 +68,11 @@
     },
     "dcb-extract": {
       "commandName": "Project",
-      "commandLineArgs": "dcb-extract",
+      "commandLineArgs": "dcb-extract --replace-tags",
       "environmentVariables": {
-        "OUTPUT_FOLDER": "G:\\datamineOutput\\sc-alpha-4.6.0-11060740-TP\\DataCore",
+        "OUTPUT_FOLDER": "G:\\datamineOutput\\sc-alpha-4.7.0-11414557",
         "TEXT_FORMAT": "json",
-        "OUTPUT_TYPES": "G:\\datamineOutput\\sc-alpha-4.6.0-11060740-TP\\DataCoreTypes",
-        "OUTPUT_ENUMS": "G:\\datamineOutput\\sc-alpha-4.6.0-11060740-TP\\DataCoreEnums",
-        "INPUT_DCB": "C:\\Program Files\\Roberts Space Industries\\Tools\\StarBreaker\\DataCore.dcb"
+        "INPUT_DCB": "C:\\Program Files\\Roberts Space Industries\\Tools\\DataCore.dcb"
       }
     },
     "dcb-generate": {
