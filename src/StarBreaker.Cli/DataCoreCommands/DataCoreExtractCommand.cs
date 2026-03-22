@@ -30,6 +30,9 @@ public class DataCoreExtractCommand : ICommand
     [CommandOption("replace-tags", Description = "Replace tags in Datacore with their actual value from TagDatabase (only in JSON text format)", EnvironmentVariable = "REPLACE_TAGS")]
     public bool ReplaceTagsInDatacore { get; init; }
 
+    [CommandOption("single-threaded", Description = "Run DataCore extraction single-threaded for debugging", EnvironmentVariable = "SINGLE_THREADED")]
+    public bool SingleThreadedDebug { get; init; }
+
     public ValueTask ExecuteAsync(IConsole console)
     {
         if (P4kFile == null && DcbFile == null)
@@ -76,31 +79,39 @@ public class DataCoreExtractCommand : ICommand
             _ => DataForge.FromDcbStreamXml(dcbStream),
         };
 
-        df.DataCore.ReplaceTagsInDatacore = ReplaceTagsInDatacore;
-        if (ReplaceTagsInDatacore)
+        if (ReplaceTagsInDatacore && TextFormat == "json")
         {
             // Extract tagdatabase in ram for in file replacement
+            // Path hardcoded as this shouldn't run on linux, and if tagDatabase isn't present then there's a problem
             var tagDatabasePath = Path.Combine(OutputDirectory, "TagDatabase\\Data\\Libs\\Foundry\\Records\\TagDatabase\\TagDatabase.TagDatabase.xml");
-            df.DataCore.createTagDatabase(tagDatabasePath);
+            if (File.Exists(tagDatabasePath))
+            {
+                df.DataCore.CreateTagDatabase(tagDatabasePath);
+                df.DataCore.ReplaceTagsInDatacore = true;
+            }
+            else
+            {
+                console.Output.WriteLine($"TagDatabase not found at {tagDatabasePath}; skipping tag replacement.");
+                df.DataCore.ReplaceTagsInDatacore = false;
+            }
         }
         
         console.Output.WriteLine($"Exporting as {TextFormat ?? "xml"} to {OutputDirectory}...");
 
         var sw = Stopwatch.StartNew();
-        var singleThreadedDebug = false; // To use for debugging as it doesn't like threads
 
         var dataCorePath = Path.Combine(OutputDirectory, "DataCore");
         var dataCoreEnumsPath = Path.Combine(OutputDirectory, "DataCoreEnums");
         var dataCoreTypesPath = Path.Combine(OutputDirectory, "DataCoreTypes");
 
         console.Output.WriteLine("Extracting DataCore...");
-        df.ExtractAllParallel(dataCorePath, Filter, new ProgressBar(console), singleThreadedDebug);
+        df.ExtractAllParallel(dataCorePath, Filter, new ProgressBar(console), SingleThreadedDebug);
 
         console.Output.WriteLine("Extracting Enums...");
-        df.ExtractEnumsParallel(dataCoreEnumsPath, new ProgressBar(console), singleThreadedDebug);
+        df.ExtractEnumsParallel(dataCoreEnumsPath, new ProgressBar(console), SingleThreadedDebug);
 
         console.Output.WriteLine("Extracting Types...");
-        df.ExtractTypesParallel(dataCoreTypesPath, new ProgressBar(console));
+        df.ExtractTypesParallel(dataCoreTypesPath, new ProgressBar(console), SingleThreadedDebug);
 
         sw.Stop();
 

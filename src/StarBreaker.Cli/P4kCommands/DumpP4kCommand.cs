@@ -1,4 +1,4 @@
-﻿using CliFx;
+using CliFx;
 using CliFx.Attributes;
 using CliFx.Infrastructure;
 using StarBreaker.P4k;
@@ -106,11 +106,11 @@ public class DumpP4kCommand : ICommand
                 var filePath = Path.Combine(baseDir, directoryNode.Name) + ".json";
                 Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
-                using var fs = File.OpenWrite(filePath);
+                using var fs = File.Create(filePath);
                 using var writer = new Utf8JsonWriter(fs, new JsonWriterOptions
                 {
                     Indented = true,
-                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // This fixes special character (&, ') being written as &amp; or &apos; (or event &amp;apos;)
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping // This fixes special character (&, ') being written as &amp; or &apos; (or even &amp;apos;)
                 });
                 jsonDir.WriteTo(writer);
             }

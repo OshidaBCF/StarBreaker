@@ -22,7 +22,7 @@ public class ExtractP4kCommand : ICommand
     {
         var p4k = P4k.P4kFile.FromFile(P4kFile);
 
-        console.Output.WriteLine("DataCore loaded.");
+        console.Output.WriteLine("P4K loaded.");
         console.Output.WriteLine("Exporting...");
 
         var sw = Stopwatch.StartNew();

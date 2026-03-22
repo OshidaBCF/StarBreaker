@@ -130,7 +130,7 @@ public class DataForge<T>
 
                 DataCore.SaveRecordToFile(record, filePath);
 
-                var currentProgress = progressValue++;
+                var currentProgress = ++progressValue;
                 //only report progress every 1000 records and when we are done
                 if (currentProgress == total || currentProgress % 1000 == 0)
                     progress?.Report(currentProgress / (double)total);
@@ -157,16 +157,26 @@ public class DataForge<T>
         progress?.Report(1);
     }
 
-    public void ExtractTypesParallel(string outputFolder,  IProgress<double>? progress = null)
+    public void ExtractTypesParallel(string outputFolder,  IProgress<double>? progress = null, bool singleThreaded = false)
     {
         var progressValue = 0;
         var total = DataCore.Database.StructDefinitions.Length;
 
         progress?.Report(progressValue);
-
-        foreach (var rootNode in _rootNodes)
-            ExtractTypeNode(rootNode, outputFolder, ref progressValue, total, progress);
-
+        if (singleThreaded)
+        {
+            foreach (var rootNode in _rootNodes)
+            {
+                ExtractTypeNode(rootNode, outputFolder, ref progressValue, total, progress);
+            }
+        }
+        else
+        {
+            Parallel.ForEach(_rootNodes, rootNode =>
+            {
+                ExtractTypeNode(rootNode, outputFolder, ref progressValue, total, progress);
+            });
+        }
         progress?.Report(1);
     }
 
@@ -218,7 +228,7 @@ public class DataForge<T>
 
                 DataCore.SaveEnumToFile(i, filePath);
 
-                var currentProgress = progressValue++;
+                var currentProgress = ++progressValue;
                 //only report progress every 100 records and when we are done
                 if (currentProgress == total || currentProgress % 100 == 0)
                     progress?.Report(currentProgress / (double)total);

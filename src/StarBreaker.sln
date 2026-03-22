@@ -1,8 +1,5 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36623.8
-MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StarBreaker.Chf", "StarBreaker.Chf\StarBreaker.Chf.csproj", "{78EE6C08-C0CB-3CC6-D0E3-BBE4D4D191AF}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StarBreaker.Cli", "StarBreaker.Cli\StarBreaker.Cli.csproj", "{EA3E650F-6583-86CA-B7B1-4C94C2E98BF2}"

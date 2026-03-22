@@ -22,7 +22,7 @@ public static class SocPakSandbox
             {
                 var p4kFile = P4kFile.FromFile(socPak);
 
-                var extractor = new P4k.P4kExtractor(p4kFile);
+                var extractor = new P4k.Extraction.P4kExtractor(p4kFile);
                 var xx = socPak
                     .Replace(@"D:\StarCitizen\P4kSocPak\", "")
                     .Replace(".socpak", "");

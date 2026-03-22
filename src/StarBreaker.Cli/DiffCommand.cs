@@ -59,14 +59,30 @@ public class DiffCommand : ICommand
         if (UseGameVersionAsPath)
         {
             var build_manifestPath = Path.Combine(GameFolder, "build_manifest.id");
+            if (!File.Exists(build_manifestPath))
+            {
+                await console.Output.WriteLineAsync("build_manifest.id not found.");
+                return;
+            }
+
             using var stream = File.OpenRead(build_manifestPath);
             var jsonObject = JsonNode.Parse(stream);
-            if (jsonObject != null)
+            var branch = jsonObject?["Data"]?["Branch"]?.GetValue<string>();
+            var changeNum = jsonObject?["Data"]?["RequestedP4ChangeNum"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(branch))
             {
-                // Use game version as output folder name, combined with -o output path
-                // Format is sc-alpha-X.Y.Z-01234567
-                OutputDirectory = Path.Combine(OutputFolder, $"{jsonObject["Data"]["Branch"]}-{jsonObject["Data"]["RequestedP4ChangeNum"]}");
+                await console.Output.WriteLineAsync("build_manifest.id is missing Data.Branch");
+                return;
             }
+            if (string.IsNullOrWhiteSpace(changeNum))
+            {
+                await console.Output.WriteLineAsync("build_manifest.id is missing Data.RequestedP4ChangeNum.");
+                return;
+            }
+
+            // Use game version as output folder name, combined with -o output path
+            // Format is sc-alpha-X.Y.Z-01234567
+            OutputDirectory = Path.Combine(OutputFolder, $"{branch}-{changeNum}");
         }
         else
         {
@@ -82,11 +98,17 @@ public class DiffCommand : ICommand
         {
             var continueQuestionUnanswered = true;
             var continueExtraction = false;
-            await console.Output.WriteLineAsync($"Version {OutputDirectory.Split("\\").Last()} already exist");
+            var outputName = Path.GetFileName(OutputDirectory);
+            await console.Output.WriteLineAsync($"Version {outputName} already exist!");
             await console.Output.WriteLineAsync($"Do you wish to continue ? Y/N");
             while (continueQuestionUnanswered)
             {
                 var input = await console.Input.ReadLineAsync();
+                if (string.IsNullOrWhiteSpace(input))
+                {
+                    continueExtraction = false;
+                    break;
+                }
                 if (!input.Equals("y", StringComparison.CurrentCultureIgnoreCase) && !input.Equals("n", StringComparison.CurrentCultureIgnoreCase))
                 {
                     console.CursorLeft = 0;
@@ -560,7 +582,8 @@ public class DiffCommand : ICommand
 
             // Because of large number of file, added a rough progress bar
             var totalCount = ddsEntriesToExtract.Count();
-            var progressPercentage = totalCount / 10;
+            var progressPercentage = Math.Max(1, totalCount / 10);
+            static string GetRelPath(string name) => Path.GetDirectoryName(name.Replace('/', Path.DirectorySeparatorChar)) ?? string.Empty;
 
             var processedCount = 0;
             var failedCount = 0;
@@ -579,7 +602,7 @@ public class DiffCommand : ICommand
                             using var pngStream = DdsFile.ConvertToPng(ddsBytes, true, true);
                             var pngBytes = pngStream.ToArray();
 
-                            var relPath = entry.Name.Substring(0, entry.Name.LastIndexOf('\\'));
+                            var relPath = GetRelPath(entry.Name);
                             var pngOutputFolderPath = Path.Combine(outputDir, relPath);
                             var pngOutputPath = Path.Combine(outputDir, entry.Name).Replace(".dds", ".png");
 
@@ -610,7 +633,7 @@ public class DiffCommand : ICommand
                             using var pngStream = DdsFile.ConvertToPng(ddsBytes, true, true);
                             var pngBytes = pngStream.ToArray();
 
-                            var relPath = entry.Name.Substring(0, entry.Name.LastIndexOf('\\'));
+                            var relPath = GetRelPath(entry.Name);
                             var pngOutputFolderPath = Path.Combine(outputDir, relPath);
                             var pngOutputPath = Path.Combine(outputDir, entry.Name).Replace(".dds", ".png");
 
@@ -643,7 +666,7 @@ public class DiffCommand : ICommand
                         {
                             using var ms = DdsFile.MergeToStream(entry.Name, p4kFileSystem);
                             var ddsBytes = ms.ToArray();
-                            var relPath = entry.Name.Substring(0, entry.Name.LastIndexOf('\\'));
+                            var relPath = GetRelPath(entry.Name);
 
                             var ddsOutputFolderPath = Path.Combine(outputDir, relPath);
                             var ddsOutputPath = Path.Combine(outputDir, entry.Name);
@@ -672,7 +695,7 @@ public class DiffCommand : ICommand
                         {
                             using var ms = DdsFile.MergeToStream(entry.Name, p4kFileSystem);
                             var ddsBytes = ms.ToArray();
-                            var relPath = entry.Name.Substring(0, entry.Name.LastIndexOf('\\'));
+                            var relPath = GetRelPath(entry.Name);
 
                             var ddsOutputFolderPath = Path.Combine(outputDir, relPath);
                             var ddsOutputPath = Path.Combine(outputDir, entry.Name);

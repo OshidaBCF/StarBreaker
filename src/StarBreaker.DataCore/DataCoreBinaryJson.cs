@@ -22,8 +22,11 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
     private Dictionary<string, string> tagDatabaseDictionary = new();
 
     // Create Tag Dictionary using the TagDatabase.TagDatabase.xml extracted
-    public void createTagDatabase(string tagDatabasePath)
+    public void CreateTagDatabase(string tagDatabasePath)
     {
+        if (!File.Exists(tagDatabasePath))
+            return;
+
         // Create Tag Database from XML
         using var fileStream = new FileStream(tagDatabasePath, FileMode.Open);
         var tagDatabaseXML = XDocument.Load(fileStream);
@@ -35,9 +38,13 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
             {
                 if (item.Name.LocalName == "Record" && item.Attribute("tagName") != null)
                 {
-                    var GUID = item.Attribute("__guid").Value;
-                    var tagName = item.Attribute("tagName").Value;
+                    var GUIDAttr = item.Attribute("__guid");
+                    var tagNameAttr = item.Attribute("tagName");
+                    if (GUIDAttr == null || tagNameAttr == null)
+                        continue;
 
+                    var GUID = GUIDAttr.Value;
+                    var tagName = tagNameAttr.Value;
                     // Use the GUID as the key, with the actual tag as the value
                     tagDatabaseDictionary[GUID] = tagName;
                 }
@@ -47,7 +54,9 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         }
 
         // Walk recursively though all elements of the XML
-        walkThoughChildrens(tagDatabaseXML.Root.Element("tags")!);
+        var tagsRoot = tagDatabaseXML.Root?.Element("tags");
+        if (tagsRoot != null)
+            walkThoughChildrens(tagsRoot);
     }
     public void SaveRecordToFile(DataCoreRecord record, string path)
     {
@@ -320,13 +329,15 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
 
         //if we get here, we're referencing a part of another file. mention the file and some details
         
-        // If we replace tags, and the current record reference teh tagdatabase, replace it
-        if (ReplaceTagsInDatacore && record.GetFileName(Database).EndsWith("tagdatabase.tagdatabase.xml") && tagDatabaseDictionary.ContainsKey(record.Id.ToString()))
+        // If we replace tags, and the current record reference the tagdatabase, replace it
+        if (ReplaceTagsInDatacore && 
+            record.GetFileName(Database).EndsWith("tagdatabase.tagdatabase.xml", StringComparison.OrdinalIgnoreCase) && 
+            tagDatabaseDictionary.TryGetValue(record.Id.ToString(), out var tagName))
         {
             if (propName == null)
-                context.Writer.WriteStringValue(tagDatabaseDictionary[record.Id.ToString()]);
+                context.Writer.WriteStringValue(tagName);
             else
-                context.Writer.WriteString(propName, tagDatabaseDictionary[record.Id.ToString()]);
+                context.Writer.WriteString(propName, tagName);
         }
         // Otherwise write record (possibility to add more databases if useful later)
         else
