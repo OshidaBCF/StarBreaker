@@ -68,6 +68,7 @@
     },
     "dcb-extract": {
       "commandName": "Project",
+      "commandLineArgs": "dcb-extract --replace-tags",
       "environmentVariables": {
         "OUTPUT_FOLDER": "G:\\datamineOutput\\scp-transit-2-11575398",
         "TEXT_FORMAT": "json",
