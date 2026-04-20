@@ -68,11 +68,10 @@
     },
     "dcb-extract": {
       "commandName": "Project",
-      "commandLineArgs": "dcb-extract --replace-tags",
       "environmentVariables": {
-        "OUTPUT_FOLDER": "G:\\datamineOutput\\sc-alpha-4.7.0-11414557",
+        "OUTPUT_FOLDER": "G:\\datamineOutput\\scp-transit-2-11575398",
         "TEXT_FORMAT": "json",
-        "INPUT_DCB": "C:\\Program Files\\Roberts Space Industries\\Tools\\DataCore.dcb"
+        "INPUT_DCB": "C:\\Program Files\\Roberts Space Industries\\Tools\\Game2.dcb"
       }
     },
     "dcb-generate": {
@@ -87,8 +86,8 @@
       "commandName": "Project",
       "commandLineArgs": "diff --use-game-version-as-path --save-archive --replace-tags",
       "environmentVariables": {
-        "GAME_FOLDER": "G:\\StarCitizenPTU\\StarCitizen\\PTU",
-        "OUTPUT_FOLDER": "G:\\datamineOutput",
+        "GAME_FOLDER": "C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE",
+        "OUTPUT_FOLDER": "G:\\datamineOutput\\",
         "TEXT_FORMAT": "json"
       },
       "remoteDebugEnabled": false

@@ -9,7 +9,6 @@ using StarBreaker.Dds;
 using StarBreaker.P4k;
 using System.Diagnostics;
 using System.Text.Json.Nodes;
-using System.Xml.Linq;
 using ZstdSharp;
 
 namespace StarBreaker.Cli;
@@ -388,6 +387,8 @@ public class DiffCommand : ICommand
             await console.Output.WriteLineAsync("No XML or SOC files found in P4K or SOCPAKs.");
             return;
         }
+
+        // TODO Add parallelisation, and progress bars
 
         foreach (var entry in mainXmlEntries)
         {

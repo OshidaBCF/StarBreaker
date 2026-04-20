@@ -147,6 +147,9 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         context.Writer.WriteStartObject();
         context.Writer.WriteString("_RecordName_", record.GetName(Database));
         context.Writer.WriteString("_RecordId_", record.Id.ToString());
+        var tag = record.GetTag(Database);
+        if (tag is not null)
+            context.Writer.WriteString("_RecordTag_", tag);
         context.Writer.WriteStartObject("_RecordValue_");
         WriteInstance(record.StructIndex, record.InstanceIndex, context);
         context.Writer.WriteEndObject();
@@ -213,7 +216,7 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
             case DataType.Double: context.Writer.WriteNumber(propName, reader.ReadDouble()); break;
             case DataType.Single: context.Writer.WriteNumber(propName, reader.ReadSingle()); break;
             case DataType.String:
-                // This replaces Tags Record ID with the actual value, much cleaner to read
+                // Replace empty strings with Null
                 var stringToWrite = reader.Read<DataCoreStringId>().ToString(Database);
                 if (stringToWrite != string.Empty)
                 {
