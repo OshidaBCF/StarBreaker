@@ -70,7 +70,7 @@
       "commandName": "Project",
       "commandLineArgs": "dcb-extract --replace-tags",
       "environmentVariables": {
-        "OUTPUT_FOLDER": "G:\\datamineOutput\\scp-transit-2-11575398",
+        "OUTPUT_FOLDER": "G:\\datamineOutput\\sc-alpha-4.8.0-ptu-11721630",
         "TEXT_FORMAT": "json",
         "INPUT_DCB": "C:\\Program Files\\Roberts Space Industries\\Tools\\Game2.dcb"
       }
@@ -85,11 +85,12 @@
     },
     "diff": {
       "commandName": "Project",
-      "commandLineArgs": "diff --use-game-version-as-path --save-archive --replace-tags",
+      "commandLineArgs": "diff --use-game-version-as-path --save-archive --replace-tags --extract-dds --use-parallel-convertion",
       "environmentVariables": {
         "GAME_FOLDER": "C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE",
         "OUTPUT_FOLDER": "G:\\datamineOutput\\",
-        "TEXT_FORMAT": "json"
+        "TEXT_FORMAT": "json",
+        "DIFF_AGAINST": "G:\\datamineOutput\\sc-alpha-4.8.0-hotfix-11875683\\"
       },
       "remoteDebugEnabled": false
     },
@@ -113,9 +114,9 @@
       "commandName": "Project",
       "commandLineArgs": "p4k-extract",
       "environmentVariables": {
-        "INPUT_P4K": "C:\\Program Files\\Roberts Space Industries\\StarCitizen\\PTU\\Data.p4k",
-        "OUTPUT_FOLDER": "D:\\StarCitizen\\P4k",
-        "FILTER": "*"
+        "INPUT_P4K": "C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Data.p4k",
+        "OUTPUT_FOLDER": "C:\\Program Files\\Roberts Space Industries\\Tools\\test",
+        "FILTER": "*Game2.dcb"
       }
     },
     "p4k-extract-socpak": {
@@ -158,8 +159,8 @@
       "commandName": "Project",
       "commandLineArgs": "p4k-dump",
       "environmentVariables": {
-        "INPUT_P4K": "C:\\Program Files\\Roberts Space Industries\\StarCitizen\\PTU\\Data.p4k",
-        "OUTPUT_FOLDER": "C:\\Development\\StarCitizen\\DataCoreExport"
+        "INPUT_P4K": "C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Data.p4k",
+        "OUTPUT_FOLDER": "C:\\Program Files\\Roberts Space Industries\\Tools\\test"
       }
     },
     "proto-extract": {

@@ -32,10 +32,12 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
         var tagDatabaseXML = XDocument.Load(fileStream);
         fileStream.Close();
 
-        void walkThoughChildrens(XElement root)
+        void walkThoughChildrens(XElement root, List<string> parentTags)
         {
+            var newParentTags = parentTags.ToList();
             foreach (var item in root.Elements())
             {
+                var tagName = "";
                 if (item.Name.LocalName == "Record" && item.Attribute("tagName") != null)
                 {
                     var GUIDAttr = item.Attribute("__guid");
@@ -44,19 +46,23 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
                         continue;
 
                     var GUID = GUIDAttr.Value;
-                    var tagName = tagNameAttr.Value;
+                    tagName = tagNameAttr.Value;
                     // Use the GUID as the key, with the actual tag as the value
-                    tagDatabaseDictionary[GUID] = tagName;
+                    tagDatabaseDictionary[GUID] = $"{string.Join(" > ", newParentTags.Append(tagName).ToList())}";
+                    walkThoughChildrens(item, newParentTags.Append(tagName).ToList());
                 }
-
-                walkThoughChildrens(item);
+                else
+                {
+                    // this is a <children> node
+                    walkThoughChildrens(item, newParentTags);
+                }
             }
         }
 
         // Walk recursively though all elements of the XML
         var tagsRoot = tagDatabaseXML.Root?.Element("tags");
         if (tagsRoot != null)
-            walkThoughChildrens(tagsRoot);
+            walkThoughChildrens(tagsRoot, []);
     }
     public void SaveRecordToFile(DataCoreRecord record, string path)
     {
@@ -330,31 +336,27 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
             return;
         }
 
-        //if we get here, we're referencing a part of another file. mention the file and some details
-        
+        // if we get here, we're referencing a part of another file. mention the file and some details
+
+        if (propName == null)
+            context.Writer.WriteStartObject();
+        else
+            context.Writer.WriteStartObject(propName);
+
+        context.Writer.WriteString("_RecordPath_", Path.ChangeExtension(DataCoreUtils.ComputeRelativePath(record.GetFileName(Database), context.Path), "json"));
+        context.Writer.WriteString("_RecordName_", record.GetName(Database));
+        context.Writer.WriteString("_RecordId_", record.Id.ToString());
+
         // If we replace tags, and the current record reference the tagdatabase, replace it
-        if (ReplaceTagsInDatacore && 
-            record.GetFileName(Database).EndsWith("tagdatabase.tagdatabase.xml", StringComparison.OrdinalIgnoreCase) && 
+        if (ReplaceTagsInDatacore &&
+            record.GetFileName(Database).EndsWith("tagdatabase.tagdatabase.xml", StringComparison.OrdinalIgnoreCase) &&
             tagDatabaseDictionary.TryGetValue(record.Id.ToString(), out var tagName))
         {
-            if (propName == null)
-                context.Writer.WriteStringValue(tagName);
-            else
-                context.Writer.WriteString(propName, tagName);
+            context.Writer.WriteString("tagName", tagName);
         }
-        // Otherwise write record (possibility to add more databases if useful later)
-        else
-        {
-            if (propName == null)
-                context.Writer.WriteStartObject();
-            else
-                context.Writer.WriteStartObject(propName);
+        // Possibility to add more databases if useful later
 
-            context.Writer.WriteString("_RecordPath_", Path.ChangeExtension(DataCoreUtils.ComputeRelativePath(record.GetFileName(Database), context.Path), "json"));
-            context.Writer.WriteString("_RecordName_", record.GetName(Database));
-            context.Writer.WriteString("_RecordId_", record.Id.ToString());
-            context.Writer.WriteEndObject();
-        }
+        context.Writer.WriteEndObject();
     }
 
     private void WriteFromStrongPointer(DataCorePointer strongPointer, Context context, string? propName)

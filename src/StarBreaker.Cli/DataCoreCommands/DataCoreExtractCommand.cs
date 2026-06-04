@@ -115,8 +115,7 @@ public class DataCoreExtractCommand : ICommand
 
         sw.Stop();
 
-        console.Output.WriteLine();
-        console.Output.WriteLine($"Export completed in {sw.ElapsedMilliseconds * 1000}s.");
+        console.Output.WriteLine($"Export completed in {sw.ElapsedMilliseconds / 1000}s.");
 
         return default;
     }
