@@ -78,7 +78,8 @@ public sealed class DataCoreBinaryJson : IDataCoreBinary<string>
 
     public void SaveStructToFile(int structIndex, string path)
     {
-        using var fileStream = new FileStream(Path.ChangeExtension(path, "json"), FileMode.Create);
+        var newPath = Path.ChangeExtension(path, "json");
+        using var fileStream = new FileStream(newPath, FileMode.Create);
         using var writer = new Utf8JsonWriter(fileStream, new JsonWriterOptions
         {
             Indented = true,

@@ -105,12 +105,15 @@ public class DataCoreExtractCommand : ICommand
         var dataCoreTypesPath = Path.Combine(OutputDirectory, "DataCoreTypes");
 
         console.Output.WriteLine("Extracting DataCore...");
+        Directory.CreateDirectory(dataCorePath);
         df.ExtractAllParallel(dataCorePath, Filter, new ProgressBar(console), SingleThreadedDebug);
 
         console.Output.WriteLine("Extracting Enums...");
+        Directory.CreateDirectory(dataCoreEnumsPath);
         df.ExtractEnumsParallel(dataCoreEnumsPath, new ProgressBar(console), SingleThreadedDebug);
 
         console.Output.WriteLine("Extracting Types...");
+        Directory.CreateDirectory(dataCoreTypesPath);
         df.ExtractTypesParallel(dataCoreTypesPath, new ProgressBar(console), SingleThreadedDebug);
 
         sw.Stop();

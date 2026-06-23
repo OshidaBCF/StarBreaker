@@ -87,10 +87,10 @@
       "commandName": "Project",
       "commandLineArgs": "diff --use-game-version-as-path --save-archive --replace-tags --extract-dds --use-parallel-convertion",
       "environmentVariables": {
-        "GAME_FOLDER": "C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE",
+        "GAME_FOLDER": "G:\\StarCitizenPTU\\StarCitizen\\PTU",
         "OUTPUT_FOLDER": "G:\\datamineOutput\\",
         "TEXT_FORMAT": "json",
-        "DIFF_AGAINST": "G:\\datamineOutput\\sc-alpha-4.8.0-hotfix-11875683\\"
+        "DIFF_AGAINST": "G:\\datamineOutput\\sc-alpha-4.9.0-EPTU-12070583\\"
       },
       "remoteDebugEnabled": false
     },

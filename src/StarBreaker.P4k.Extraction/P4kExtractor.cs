@@ -1,4 +1,4 @@
-﻿using System.IO.Enumeration;
+using System.IO.Enumeration;
 using System.Text.RegularExpressions;
 
 namespace StarBreaker.P4k.Extraction;
@@ -94,7 +94,7 @@ public sealed class P4kExtractor
     public void ExtractEntriesParallel(string outputDir, ICollection<P4kEntry> entries, IProgress<double>? progress = null)
     {
         var numberOfEntries = entries.Count;
-        var fivePercent = Math.Max(numberOfEntries / 20, 1);
+        var precentStep = Math.Max(numberOfEntries / 100, 1);
         var processedEntries = 0;
 
         progress?.Report(0);
@@ -113,7 +113,7 @@ public sealed class P4kExtractor
                 ExtractEntry(outputDir, entry);
 
                 var newIncrement = Interlocked.Increment(ref processedEntries);
-                if (newIncrement == numberOfEntries || newIncrement % fivePercent == 0)
+                if (newIncrement == numberOfEntries || newIncrement % precentStep == 0)
                 {
                     using (lockObject.EnterScope())
                     {

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using StarBreaker.Common;
@@ -72,6 +73,18 @@ public readonly struct CryXml
         WriteXmlElement(writer, 0);
     }
 
+
+    // Source - https://stackoverflow.com/a/21053139
+    // Posted by Duke, modified by community. See post 'Timeline' for change history
+    // Retrieved 2026-06-23, License - CC BY-SA 4.0
+
+    static string ReplaceHexadecimalSymbols(string txt)
+    {
+        var r = "[\x00-\x08\x0B\x0C\x0E-\x1F\x26]";
+        return Regex.Replace(txt, r, "?", RegexOptions.Compiled);
+    }
+
+
     private void WriteXmlElement(XmlWriter writer, int nodeIndex)
     {
         var node = _nodes[nodeIndex];
@@ -81,7 +94,7 @@ public readonly struct CryXml
         foreach (var attribute in thisAttributes)
         {
             var key = GetString(_stringData, (int)attribute.KeyStringOffset);
-            var val = GetString(_stringData, (int)attribute.ValueStringOffset);
+            var val = ReplaceHexadecimalSymbols(GetString(_stringData, (int)attribute.ValueStringOffset));
 
             //these mess things up. unsure if we should make a better attempt at preserving them?
             if (key.StartsWith("xmlns"))
@@ -99,7 +112,7 @@ public readonly struct CryXml
                 writer.WriteAttributeString(splits[1], splits[0], val);
                 continue;
             }
-            
+
             writer.WriteAttributeString(key, val);
         }
 
