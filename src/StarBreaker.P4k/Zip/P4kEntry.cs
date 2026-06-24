@@ -16,6 +16,7 @@ public sealed class P4kEntry
     public ulong Offset { get; }
     public DateTime LastModified => FromDosDateTime(_dosDateTime);
     public uint Crc32 { get; }
+    public bool HasLocalHeader { get; }
 
     public P4kEntry(
         string name,
@@ -25,7 +26,8 @@ public sealed class P4kEntry
         bool isCrypted,
         ulong offset,
         uint lastModifiedDateTime,
-        uint crc32
+        uint crc32,
+        bool hasLocalHeader = true
     )
     {
         Name = name.Replace('/', '\\'); //disgusting
@@ -36,6 +38,7 @@ public sealed class P4kEntry
         Offset = offset;
         _dosDateTime = lastModifiedDateTime;
         Crc32 = crc32;
+        HasLocalHeader = hasLocalHeader;
     }
 
     //https://source.dot.net/#System.IO.Compression/System/IO/Compression/ZipHelper.cs,76523e345de18cc8

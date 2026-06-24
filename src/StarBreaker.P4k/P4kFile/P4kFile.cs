@@ -41,20 +41,46 @@ public sealed class P4kFile : IP4kFile
 
     public static P4kFile FromP4kEntry(IP4kFile file, P4kEntry entry, IProgress<double>? progress = null) => FromStream(new P4kP4kBacking(file, entry), progress);
 
+    private const int EocdV2Size = 175;
+    private const int CdrV2EntrySize = 204;
+    private const uint EocdV2Magic = 0x696A694A;
+    private const ushort EocdV2Version = 2;
+
     private static P4kFile FromStream(IP4kBacking backing, IProgress<double>? progress = null)
     {
         using var stream = backing.Open();
-
         progress?.Report(0);
-        using var reader = new BinaryReader(stream, Encoding.UTF8, false);
+
+        var entries = IsV2(stream) ? ReadV2(stream, progress) : ReadV1(stream, progress);
+
+        var p4kFile = new P4kFile(entries, backing);
+        progress?.Report(1);
+        return p4kFile;
+    }
+
+    private static bool IsV2(Stream stream)
+    {
+        if (stream.Length < EocdV2Size)
+            return false;
+
+        stream.Seek(-8, SeekOrigin.End);
+        Span<byte> buffer = stackalloc byte[8];
+        stream.ReadExactly(buffer);
+
+        var reader = new SpanReader(buffer);
+        reader.Advance(2);
+        var version = reader.ReadUInt16();
+        var magic = reader.ReadUInt32();
+        return magic == EocdV2Magic && version == EocdV2Version;
+    }
+
+    private static P4kEntry[] ReadV1(Stream stream, IProgress<double>? progress)
+    {
+        using var reader = new BinaryReader(stream, Encoding.UTF8, true);
 
         var eocdLocation = reader.BaseStream.Locate(EOCDRecord.Magic);
         reader.BaseStream.Seek(eocdLocation, SeekOrigin.Begin);
         var eocd = reader.BaseStream.Read<EOCDRecord>();
-        var comment = reader.ReadBytes(eocd.CommentLength).AsSpan();
-
-        // if (!comment.StartsWith("CIG"u8))
-        //     throw new Exception("Invalid comment");
 
         ulong totalEntries = eocd.TotalEntries;
         ulong centralDirectoryOffset = eocd.CentralDirectoryOffset;
@@ -89,10 +115,76 @@ public sealed class P4kFile : IP4kFile
                 progress?.Report(i / (double)totalEntries);
         }
 
-        // Create P4kFile instance
-        var p4kFile = new P4kFile(entries, backing);
-        progress?.Report(1);
-        return p4kFile;
+        return entries;
+    }
+
+    private static P4kEntry[] ReadV2(Stream stream, IProgress<double>? progress)
+    {
+        stream.Seek(-EocdV2Size, SeekOrigin.End);
+        var eocdBytes = new byte[EocdV2Size];
+        stream.ReadExactly(eocdBytes);
+
+        var eocd = new SpanReader(eocdBytes);
+        var totalEntries = eocd.ReadUInt64();
+        eocd.Advance(8);
+        var centralDirectoryOffset = eocd.ReadUInt64();
+        var centralDirectorySize = eocd.ReadUInt64();
+        eocd.Advance(8);
+        var nameTableOffset = eocd.ReadUInt64();
+        var nameTableSize = eocd.ReadUInt64();
+
+        var cdr = new byte[(int)centralDirectorySize];
+        stream.Seek((long)centralDirectoryOffset, SeekOrigin.Begin);
+        stream.ReadExactly(cdr);
+
+        var names = new byte[(int)nameTableSize];
+        stream.Seek((long)nameTableOffset, SeekOrigin.Begin);
+        stream.ReadExactly(names);
+
+        var reportInterval = (int)Math.Max(totalEntries / 50, 1);
+        var entries = new P4kEntry[totalEntries];
+
+        for (var i = 0; i < (int)totalEntries; i++)
+        {
+            entries[i] = ReadEntryV2(cdr, names, i);
+
+            if (i % reportInterval == 0)
+                progress?.Report(i / (double)totalEntries);
+        }
+
+        return entries;
+    }
+
+    private static P4kEntry ReadEntryV2(ReadOnlySpan<byte> cdr, ReadOnlySpan<byte> names, int index)
+    {
+        var reader = new SpanReader(cdr, index * CdrV2EntrySize);
+        var compressionMethod = reader.ReadUInt16();
+        var lastModTime = reader.ReadUInt16();
+        var lastModDate = reader.ReadUInt16();
+        var crc32 = reader.ReadUInt32();
+        var compressedSize = reader.ReadUInt64();
+        var uncompressedSize = reader.ReadUInt64();
+        var dataOffset = reader.ReadUInt64();
+        var nameOffset = reader.ReadUInt64();
+        reader.Advance(128);
+        var isCrypted = reader.ReadUInt16() == 1;
+
+        var nameReader = new SpanReader(names, (int)nameOffset);
+        var name = nameReader.ReadNullTerminatedString();
+
+        var dosDateTime = ((uint)lastModDate << 16) | lastModTime;
+
+        return new P4kEntry(
+            name,
+            compressedSize,
+            uncompressedSize,
+            compressionMethod,
+            isCrypted,
+            dataOffset,
+            dosDateTime,
+            crc32,
+            hasLocalHeader: false
+        );
     }
 
 
@@ -198,6 +290,9 @@ public sealed class P4kFile : IP4kFile
     private StreamSegment OpenInternal(P4kEntry entry)
     {
         var p4kStream = _backing.Open();
+
+        if (!entry.HasLocalHeader)
+            return new StreamSegment(p4kStream, (long)entry.Offset, (long)entry.CompressedSize, false);
 
         p4kStream.Seek((long)entry.Offset, SeekOrigin.Begin);
         var localFileHeader = p4kStream.Read<uint>();
