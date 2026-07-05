@@ -73,17 +73,11 @@ public readonly struct CryXml
         WriteXmlElement(writer, 0);
     }
 
-
-    // Source - https://stackoverflow.com/a/21053139
-    // Posted by Duke, modified by community. See post 'Timeline' for change history
-    // Retrieved 2026-06-23, License - CC BY-SA 4.0
-
+    static readonly Regex HexPattern = new Regex(@"[\x00-\x08\x0B\x0C\x0E-\x1F]", RegexOptions.Compiled);
     static string ReplaceHexadecimalSymbols(string txt)
     {
-        var r = "[\x00-\x08\x0B\x0C\x0E-\x1F\x26]";
-        return Regex.Replace(txt, r, "?", RegexOptions.Compiled);
+        return HexPattern.Replace(txt, match => $"\\x{(int)match.Value[0]:X4}");
     }
-
 
     private void WriteXmlElement(XmlWriter writer, int nodeIndex)
     {
@@ -112,7 +106,7 @@ public readonly struct CryXml
                 writer.WriteAttributeString(splits[1], splits[0], val);
                 continue;
             }
-
+            
             writer.WriteAttributeString(key, val);
         }
 
