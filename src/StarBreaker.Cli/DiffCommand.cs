@@ -46,6 +46,9 @@ public class DiffCommand : ICommand
     [CommandOption("use-parallel-convertion", Description = "Extract/Convert DDS files using paralellism", EnvironmentVariable = "USE_PARALLEL")]
     public bool UseParallelConvertion { get; init; }
 
+    [CommandOption("extract-protobuf", Description = "Extract Protobuf Description and Definitions from the game exe", EnvironmentVariable = "EXTRACT_PROTOBUF")]
+    public bool ExtractProtobuf { get; init; }
+
     [CommandOption("save-archive", Description = "Create Compressed Archive of the game exe and DataCore", EnvironmentVariable = "SAVE_ARCHIVE")]
     public bool SaveCompressedArchive { get; init; }
 
@@ -224,26 +227,29 @@ public class DiffCommand : ICommand
         await ExtractP4kXmlFiles(p4kFile, console);
         await console.Output.WriteLineAsync("P4K Content files extracted in " + sw.Elapsed);
         sw.Restart();
-        
-        await console.Output.WriteLineAsync("Extracting Protobuf definitions...");
-        var extractProtobufs = new ExtractProtobufsCommand
-        {
-            Input = exeFile,
-            Output = Path.Combine(OutputDirectory, "Protobuf")
-        };
-        await extractProtobufs.ExecuteAsync(fakeConsole);
-        await console.Output.WriteLineAsync("Protobuf definitions extracted in " + sw.Elapsed);
-        sw.Restart();
 
-        await console.Output.WriteLineAsync("Extracting Protobuf descriptor set...");
-        var extractDescriptor = new ExtractDescriptorSetCommand
+        if (ExtractProtobuf)
         {
-            Input = exeFile,
-            Output = Path.Combine(OutputDirectory, "Protobuf", "descriptor_set.bin")
-        };
-        await extractDescriptor.ExecuteAsync(fakeConsole);
-        await console.Output.WriteLineAsync("Protobuf descriptor set extracted in " + sw.Elapsed);
-        sw.Restart();
+            await console.Output.WriteLineAsync("Extracting Protobuf definitions...");
+            var extractProtobufs = new ExtractProtobufsCommand
+            {
+                Input = exeFile,
+                Output = Path.Combine(OutputDirectory, "Protobuf")
+            };
+            await extractProtobufs.ExecuteAsync(fakeConsole);
+            await console.Output.WriteLineAsync("Protobuf definitions extracted in " + sw.Elapsed);
+            sw.Restart();
+
+            await console.Output.WriteLineAsync("Extracting Protobuf descriptor set...");
+            var extractDescriptor = new ExtractDescriptorSetCommand
+            {
+                Input = exeFile,
+                Output = Path.Combine(OutputDirectory, "Protobuf", "descriptor_set.bin")
+            };
+            await extractDescriptor.ExecuteAsync(fakeConsole);
+            await console.Output.WriteLineAsync("Protobuf descriptor set extracted in " + sw.Elapsed);
+            sw.Restart();
+        }
 
         if (SaveCompressedArchive)
         {
