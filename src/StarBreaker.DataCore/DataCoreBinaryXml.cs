@@ -48,6 +48,8 @@ public sealed class DataCoreBinaryXml : IDataCoreBinary<string>
             writer.WriteStartElement("Property");
             writer.WriteAttributeString("Name", prop.GetName(Database));
             writer.WriteAttributeString("Type", prop.GetTypeString(Database));
+            writer.WriteAttributeString("DataType", prop.DataType.ToString());
+            writer.WriteAttributeString("ConversionType", prop.ConversionType.ToString());
             writer.WriteEndElement();
         }
         writer.WriteEndElement();
