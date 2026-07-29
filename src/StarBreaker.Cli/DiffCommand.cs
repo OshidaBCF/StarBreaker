@@ -443,7 +443,7 @@ public class DiffCommand : ICommand
             var lockObject = new Lock();
             var currentProgress = 0;
             double numberOfEntries = mainXmlEntries.Count;
-            var precentStep = Math.Max(numberOfEntries / 100, 1);
+            var precentStep = Math.Max((int)numberOfEntries / 100, 1);
             IProgress<double> progress = new ProgressBar(console);
             await console.Output.WriteLineAsync($"Extracting {numberOfEntries} Main XML Entries");
             Parallel.ForEach(mainXmlEntries, entry =>
@@ -455,14 +455,14 @@ public class DiffCommand : ICommand
                 {
                     using (lockObject.EnterScope())
                     {
-                        progress?.Report(newIncrement / (double)numberOfEntries);
+                        progress?.Report(newIncrement / numberOfEntries);
                     }
                 }
             });
 
             currentProgress = 0;
             numberOfEntries = mainSocEntries.Count;
-            precentStep = Math.Max(numberOfEntries / 100, 1);
+            precentStep = Math.Max((int)numberOfEntries / 100, 1);
             progress = new ProgressBar(console);
             await console.Output.WriteLineAsync($"Extracting {mainSocEntries.Count} Main SOC Entries");
             Parallel.ForEach(mainSocEntries, entry =>
@@ -474,14 +474,14 @@ public class DiffCommand : ICommand
                 {
                     using (lockObject.EnterScope())
                     {
-                        progress?.Report(newIncrement / (double)numberOfEntries);
+                        progress?.Report(newIncrement / numberOfEntries);
                     }
                 }
             });
 
             currentProgress = 0;
             numberOfEntries = socpakXmlEntries.Count;
-            precentStep = Math.Max(numberOfEntries / 100, 1);
+            precentStep = Math.Max((int)numberOfEntries / 100, 1);
             progress = new ProgressBar(console);
             await console.Output.WriteLineAsync($"Extracting {socpakXmlEntries.Count} SOCPAK XML Entries");
             Parallel.ForEach(socpakXmlEntries, entryTuple =>
@@ -498,14 +498,14 @@ public class DiffCommand : ICommand
                 {
                     using (lockObject.EnterScope())
                     {
-                        progress?.Report(newIncrement / (double)numberOfEntries);
+                        progress?.Report(newIncrement / numberOfEntries);
                     }
                 }
             });
 
             currentProgress = 0;
             numberOfEntries = socpakSocEntries.Count;
-            precentStep = Math.Max(numberOfEntries / 100, 1);
+            precentStep = Math.Max((int)numberOfEntries / 100, 1);
             progress = new ProgressBar(console);
             await console.Output.WriteLineAsync($"Extracting {socpakSocEntries.Count} SOCPAK SOC Entries");
             Parallel.ForEach(socpakSocEntries, entryTuple =>
@@ -522,7 +522,7 @@ public class DiffCommand : ICommand
                 {
                     using (lockObject.EnterScope())
                     {
-                        progress?.Report(newIncrement / (double)numberOfEntries);
+                        progress?.Report(newIncrement / numberOfEntries);
                     }
                 }
             });
