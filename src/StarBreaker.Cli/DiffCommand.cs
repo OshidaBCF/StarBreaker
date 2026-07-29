@@ -467,7 +467,7 @@ public class DiffCommand : ICommand
             await console.Output.WriteLineAsync($"Extracting {mainSocEntries.Count} Main SOC Entries");
             Parallel.ForEach(mainSocEntries, entry =>
             {
-                ExtractXmlEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
+                ExtractSocEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
 
                 var newIncrement = Interlocked.Increment(ref currentProgress);
                 if (newIncrement == numberOfEntries || newIncrement % precentStep == 0)
@@ -515,7 +515,7 @@ public class DiffCommand : ICommand
                 var socpakName = Path.GetFileNameWithoutExtension(socpakPath);
                 var fullOutputPath = Path.Combine(socpakDir, socpakName, entry.RelativeOutputPath);
 
-                ExtractXmlEntry(socpak, entry, outputDir, fullOutputPath);
+                ExtractSocEntry(socpak, entry, outputDir, fullOutputPath);
 
                 var newIncrement = Interlocked.Increment(ref currentProgress);
                 if (newIncrement == numberOfEntries || newIncrement % precentStep == 0)
