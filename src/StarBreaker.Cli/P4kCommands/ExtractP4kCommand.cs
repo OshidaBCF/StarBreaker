@@ -27,11 +27,11 @@ public class ExtractP4kCommand : ICommand
 
         var sw = Stopwatch.StartNew();
         var extractor = new P4k.Extraction.P4kExtractor(p4k);
-        extractor.ExtractFiltered(OutputDirectory, FilterPattern, new ProgressBar(console));
+        var filteredEntriesCount = extractor.ExtractFiltered(OutputDirectory, FilterPattern, new ProgressBar(console));
         sw.Stop();
 
         console.Output.WriteLine();
-        console.Output.WriteLine($"Export completed in {sw}");
+        console.Output.WriteLine($"Export of {filteredEntriesCount} files completed in {sw}");
 
         return default;
     }

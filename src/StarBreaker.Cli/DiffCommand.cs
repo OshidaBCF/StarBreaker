@@ -37,14 +37,17 @@ public class DiffCommand : ICommand
     [CommandOption("format", 'f', Description = "Output format", EnvironmentVariable = "TEXT_FORMAT")]
     public string TextFormat { get; init; } = "xml";
 
+    [CommandOption("p4k-use-parallel-extraction", Description = "Extract P4K files using parallelism", EnvironmentVariable = "P4K_USE_PARALLEL")]
+    public bool P4KUseParallelExtraction { get; init; }
+
     [CommandOption("extract-dds", Description = "Extract DDS", EnvironmentVariable = "EXTRACT_DDS")]
     public bool ExtractDds { get; init; }
 
     [CommandOption("convert-dds", Description = "Convert DDS files to PNG", EnvironmentVariable = "CONVERT_DDS")]
     public bool ConvertDDSToPNG { get; init; }
 
-    [CommandOption("use-parallel-convertion", Description = "Extract/Convert DDS files using paralellism", EnvironmentVariable = "USE_PARALLEL")]
-    public bool UseParallelConvertion { get; init; }
+    [CommandOption("dds-use-parallel-convertion", Description = "Extract/Convert DDS files using parallelism", EnvironmentVariable = "DDS_USE_PARALLEL")]
+    public bool DDSUseParallelConvertion { get; init; }
 
     [CommandOption("extract-protobuf", Description = "Extract Protobuf Description and Definitions from the game exe", EnvironmentVariable = "EXTRACT_PROTOBUF")]
     public bool ExtractProtobuf { get; init; }
@@ -203,7 +206,7 @@ public class DiffCommand : ICommand
         if (ExtractDds)
         {
             await console.Output.WriteLineAsync("Extracting DDS files...");
-            await ExtractDdsFiles(p4kFile, console, DiffAgainst);
+            await ExtractDdsFiles(p4kFile, console, DiffAgainst, DDSUseParallelConvertion);
             await console.Output.WriteLineAsync("DDS files extracted in " + sw.Elapsed);
             sw.Restart();
         }
@@ -212,7 +215,7 @@ public class DiffCommand : ICommand
         await ExtractLocalization(p4kFile, console);
         await console.Output.WriteLineAsync("Localization extracted in " + sw.Elapsed);
         sw.Restart();
-
+        
         await console.Output.WriteLineAsync("Extracting P4k...");
         var dumpP4k = new DumpP4kCommand
         {
@@ -224,10 +227,10 @@ public class DiffCommand : ICommand
         await console.Output.WriteLineAsync("P4k extracted in " + sw.Elapsed);
 
         await console.Output.WriteLineAsync("Extracting P4K Content files...");
-        await ExtractP4kXmlFiles(p4kFile, console);
+        await ExtractP4kXmlFiles(p4kFile, console, P4KUseParallelExtraction);
         await console.Output.WriteLineAsync("P4K Content files extracted in " + sw.Elapsed);
         sw.Restart();
-
+        
         if (ExtractProtobuf)
         {
             await console.Output.WriteLineAsync("Extracting Protobuf definitions...");
@@ -379,7 +382,7 @@ public class DiffCommand : ICommand
         });
         jsonDir.WriteTo(writer);
     }
-    private async Task ExtractP4kXmlFiles(string p4kFile, IConsole console)
+    private async Task ExtractP4kXmlFiles(string p4kFile, IConsole console, bool useParallelExtract = true)
     {
         var p4k = P4kFile.FromFile(p4kFile);
         var outputDir = Path.Combine(OutputDirectory, "P4kContents");
@@ -435,54 +438,144 @@ public class DiffCommand : ICommand
             return;
         }
 
-        // TODO Add parallelisation, and progress bars
-
-        double currentProgress = 0;
-        IProgress<double> progress = new ProgressBar(console);
-        await console.Output.WriteLineAsync($"Extracting {mainXmlEntries.Count} Main XML Entries");
-        foreach (var entry in mainXmlEntries)
+        if (useParallelExtract)
         {
-            ExtractXmlEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
-            currentProgress++;
-            progress?.Report(currentProgress / mainXmlEntries.Count);
+            var lockObject = new Lock();
+            var currentProgress = 0;
+            double numberOfEntries = mainXmlEntries.Count;
+            var precentStep = Math.Max(numberOfEntries / 100, 1);
+            IProgress<double> progress = new ProgressBar(console);
+            await console.Output.WriteLineAsync($"Extracting {numberOfEntries} Main XML Entries");
+            Parallel.ForEach(mainXmlEntries, entry =>
+            {
+                ExtractXmlEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
+
+                var newIncrement = Interlocked.Increment(ref currentProgress);
+                if (newIncrement == numberOfEntries || newIncrement % precentStep == 0)
+                {
+                    using (lockObject.EnterScope())
+                    {
+                        progress?.Report(newIncrement / (double)numberOfEntries);
+                    }
+                }
+            });
+
+            currentProgress = 0;
+            numberOfEntries = mainSocEntries.Count;
+            precentStep = Math.Max(numberOfEntries / 100, 1);
+            progress = new ProgressBar(console);
+            await console.Output.WriteLineAsync($"Extracting {mainSocEntries.Count} Main SOC Entries");
+            Parallel.ForEach(mainSocEntries, entry =>
+            {
+                ExtractXmlEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
+
+                var newIncrement = Interlocked.Increment(ref currentProgress);
+                if (newIncrement == numberOfEntries || newIncrement % precentStep == 0)
+                {
+                    using (lockObject.EnterScope())
+                    {
+                        progress?.Report(newIncrement / (double)numberOfEntries);
+                    }
+                }
+            });
+
+            currentProgress = 0;
+            numberOfEntries = socpakXmlEntries.Count;
+            precentStep = Math.Max(numberOfEntries / 100, 1);
+            progress = new ProgressBar(console);
+            await console.Output.WriteLineAsync($"Extracting {socpakXmlEntries.Count} SOCPAK XML Entries");
+            Parallel.ForEach(socpakXmlEntries, entryTuple =>
+            {
+                (var entry, var socpakPath, var socpak) = entryTuple;
+                var socpakDir = Path.GetDirectoryName(socpakPath) ?? "";
+                var socpakName = Path.GetFileNameWithoutExtension(socpakPath);
+                var fullOutputPath = Path.Combine(socpakDir, socpakName, entry.RelativeOutputPath);
+
+                ExtractXmlEntry(socpak, entry, outputDir, fullOutputPath);
+
+                var newIncrement = Interlocked.Increment(ref currentProgress);
+                if (newIncrement == numberOfEntries || newIncrement % precentStep == 0)
+                {
+                    using (lockObject.EnterScope())
+                    {
+                        progress?.Report(newIncrement / (double)numberOfEntries);
+                    }
+                }
+            });
+
+            currentProgress = 0;
+            numberOfEntries = socpakSocEntries.Count;
+            precentStep = Math.Max(numberOfEntries / 100, 1);
+            progress = new ProgressBar(console);
+            await console.Output.WriteLineAsync($"Extracting {socpakSocEntries.Count} SOCPAK SOC Entries");
+            Parallel.ForEach(socpakSocEntries, entryTuple =>
+            {
+                (var entry, var socpakPath, var socpak) = entryTuple;
+                var socpakDir = Path.GetDirectoryName(socpakPath) ?? "";
+                var socpakName = Path.GetFileNameWithoutExtension(socpakPath);
+                var fullOutputPath = Path.Combine(socpakDir, socpakName, entry.RelativeOutputPath);
+
+                ExtractXmlEntry(socpak, entry, outputDir, fullOutputPath);
+
+                var newIncrement = Interlocked.Increment(ref currentProgress);
+                if (newIncrement == numberOfEntries || newIncrement % precentStep == 0)
+                {
+                    using (lockObject.EnterScope())
+                    {
+                        progress?.Report(newIncrement / (double)numberOfEntries);
+                    }
+                }
+            });
         }
-
-        currentProgress = 0;
-        progress = new ProgressBar(console);
-        await console.Output.WriteLineAsync($"Extracting {mainSocEntries.Count} Main SOC Entries");
-        foreach (var entry in mainSocEntries)
+        else
         {
-            ExtractSocEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
-            currentProgress++;
-            progress?.Report(currentProgress / mainSocEntries.Count);
-        }
+            double currentProgress = 0;
+            IProgress<double> progress = new ProgressBar(console);
+            await console.Output.WriteLineAsync($"Extracting {mainXmlEntries.Count} Main XML Entries");
+            foreach (var entry in mainXmlEntries)
+            {
+                ExtractXmlEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
+                currentProgress++;
+                progress?.Report(currentProgress / mainXmlEntries.Count);
+            }
 
-        currentProgress = 0;
-        progress = new ProgressBar(console);
-        await console.Output.WriteLineAsync($"Extracting {socpakXmlEntries.Count} SOCPAK XML Entries");
-        foreach (var (entry, socpakPath, socpak) in socpakXmlEntries)
-        {
-            var socpakDir = Path.GetDirectoryName(socpakPath) ?? "";
-            var socpakName = Path.GetFileNameWithoutExtension(socpakPath);
-            var fullOutputPath = Path.Combine(socpakDir, socpakName, entry.RelativeOutputPath);
-            
-            ExtractXmlEntry(socpak, entry, outputDir, fullOutputPath);
-            currentProgress++;
-            progress?.Report(currentProgress / socpakXmlEntries.Count);
-        }
+            currentProgress = 0;
+            progress = new ProgressBar(console);
+            await console.Output.WriteLineAsync($"Extracting {mainSocEntries.Count} Main SOC Entries");
+            foreach (var entry in mainSocEntries)
+            {
+                ExtractSocEntry(p4k, entry, outputDir, entry.RelativeOutputPath);
+                currentProgress++;
+                progress?.Report(currentProgress / mainSocEntries.Count);
+            }
 
-        currentProgress = 0;
-        progress = new ProgressBar(console);
-        await console.Output.WriteLineAsync($"Extracting {socpakSocEntries.Count} SOCPAK SOC Entries");
-        foreach (var (entry, socpakPath, socpak) in socpakSocEntries)
-        {
-            var socpakDir = Path.GetDirectoryName(socpakPath) ?? "";
-            var socpakName = Path.GetFileNameWithoutExtension(socpakPath);
-            var fullOutputPath = Path.Combine(socpakDir, socpakName, entry.RelativeOutputPath);
+            currentProgress = 0;
+            progress = new ProgressBar(console);
+            await console.Output.WriteLineAsync($"Extracting {socpakXmlEntries.Count} SOCPAK XML Entries");
+            foreach (var (entry, socpakPath, socpak) in socpakXmlEntries)
+            {
+                var socpakDir = Path.GetDirectoryName(socpakPath) ?? "";
+                var socpakName = Path.GetFileNameWithoutExtension(socpakPath);
+                var fullOutputPath = Path.Combine(socpakDir, socpakName, entry.RelativeOutputPath);
 
-            ExtractSocEntry(socpak, entry, outputDir, fullOutputPath);
-            currentProgress++;
-            progress?.Report(currentProgress / socpakSocEntries.Count);
+                ExtractXmlEntry(socpak, entry, outputDir, fullOutputPath);
+                currentProgress++;
+                progress?.Report(currentProgress / socpakXmlEntries.Count);
+            }
+
+            currentProgress = 0;
+            progress = new ProgressBar(console);
+            await console.Output.WriteLineAsync($"Extracting {socpakSocEntries.Count} SOCPAK SOC Entries");
+            foreach (var (entry, socpakPath, socpak) in socpakSocEntries)
+            {
+                var socpakDir = Path.GetDirectoryName(socpakPath) ?? "";
+                var socpakName = Path.GetFileNameWithoutExtension(socpakPath);
+                var fullOutputPath = Path.Combine(socpakDir, socpakName, entry.RelativeOutputPath);
+
+                ExtractSocEntry(socpak, entry, outputDir, fullOutputPath);
+                currentProgress++;
+                progress?.Report(currentProgress / socpakSocEntries.Count);
+            }
         }
 
         await console.Output.WriteLineAsync($"Extracted {mainXmlEntries.Count} XML files from P4K and {socpakXmlEntries.Count} from SOCPAKs.");
@@ -603,7 +696,7 @@ public class DiffCommand : ICommand
         await input.CopyToAsync(compressionStream);
     }
 
-    private async Task ExtractDdsFiles(string p4kFile, IConsole console, string? diffAgainst)
+    private async Task ExtractDdsFiles(string p4kFile, IConsole console, string? diffAgainst, bool UseParallelConvertion = true)
     {
         try
         {

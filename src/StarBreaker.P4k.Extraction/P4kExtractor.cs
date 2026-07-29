@@ -33,7 +33,7 @@ public sealed class P4kExtractor
         _p4KFile = p4KFile;
     }
 
-    public void ExtractFiltered(string outputDir, string? filter = null, IProgress<double>? progress = null, bool forceSequential = false)
+    public double ExtractFiltered(string outputDir, string? filter = null, IProgress<double>? progress = null, bool forceSequential = false)
     {
         //TODO: if the filter is for *.dds, make sure to include *.dds.N too. Maybe do the pre processing before we filter?
         var filteredEntries = (filter is null
@@ -46,6 +46,7 @@ public sealed class P4kExtractor
             ExtractEntriesSequential(outputDir, filteredEntries, progress);
         else
             ExtractEntriesParallel(outputDir, filteredEntries, progress);
+        return filteredEntries.Length;
     }
 
     public void ExtractRegex(string outputDir, string? regex = null, IProgress<double>? progress = null, bool forceSequential = false)
