@@ -35,7 +35,7 @@ public class DiffCommand : ICommand
     public bool KeepOld { get; init; }
 
     [CommandOption("format", 'f', Description = "Output format", EnvironmentVariable = "TEXT_FORMAT")]
-    public string TextFormat { get; init; } = "xml";
+    public string TextFormat { get; init; } = "json";
 
     [CommandOption("p4k-use-parallel-extraction", Description = "Extract P4K files using parallelism", EnvironmentVariable = "P4K_USE_PARALLEL")]
     public bool P4KUseParallelExtraction { get; init; }
@@ -183,7 +183,13 @@ public class DiffCommand : ICommand
         await ExtractTagDatabase(p4kFile, fakeConsole);
         await console.Output.WriteLineAsync("TagDatabase extracted in " + sw.Elapsed);
         sw.Restart();
-        
+
+        // TODO : same inline replacement for localization strings ?
+        await console.Output.WriteLineAsync("Extracting Localization...");
+        await ExtractLocalization(p4kFile, console);
+        await console.Output.WriteLineAsync("Localization extracted in " + sw.Elapsed);
+        sw.Restart();
+
         // Rest is sorted in alphabetical order cuz it bothered me
         // Also added a "Extracting X" message before starting extraction
         await console.Output.WriteLineAsync("Extracting DataCore...");
@@ -210,11 +216,6 @@ public class DiffCommand : ICommand
             await console.Output.WriteLineAsync("DDS files extracted in " + sw.Elapsed);
             sw.Restart();
         }
-        
-        await console.Output.WriteLineAsync("Extracting Localization...");
-        await ExtractLocalization(p4kFile, console);
-        await console.Output.WriteLineAsync("Localization extracted in " + sw.Elapsed);
-        sw.Restart();
         
         await console.Output.WriteLineAsync("Extracting P4k...");
         var dumpP4k = new DumpP4kCommand
@@ -392,6 +393,12 @@ public class DiffCommand : ICommand
             .Where(e => e.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
+        var mainEntxmlEntries = p4k.Entries
+            .Where(e => e.Name.EndsWith(".entxml", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        mainXmlEntries.AddRange(mainEntxmlEntries);
+
         var mainSocEntries = p4k.Entries
             .Where(e => e.Name.EndsWith(".soc", StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -403,6 +410,7 @@ public class DiffCommand : ICommand
             .ToList();
 
         var socpakXmlEntries = new List<(P4kEntry entry, string socpakPath, P4kFile socpak)>();
+        var socpakEntxmlEntries = new List<(P4kEntry entry, string socpakPath, P4kFile socpak)>();
         var socpakSocEntries = new List<(P4kEntry entry, string socpakPath, P4kFile socpak)>();
         foreach (var socpakEntry in socpakEntries)
         {
@@ -415,6 +423,13 @@ public class DiffCommand : ICommand
                     .ToList();
                 
                 socpakXmlEntries.AddRange(xmlsInSocpak);
+
+                var entxmlInSocpak = socpak.Entries
+                    .Where(e => e.Name.EndsWith(".entxml", StringComparison.OrdinalIgnoreCase))
+                    .Select(e => (entry: e, socpakPath: socpakEntry.RelativeOutputPath, socpak: socpak))
+                    .ToList();
+
+                socpakXmlEntries.AddRange(entxmlInSocpak);
 
                 var socsInSocpak = socpak.Entries
                     .Where(e => e.Name.EndsWith(".soc", StringComparison.OrdinalIgnoreCase))
@@ -430,11 +445,12 @@ public class DiffCommand : ICommand
         }
 
         var totalXmlFiles = mainXmlEntries.Count + socpakXmlEntries.Count;
+        var totalEntxmlFiles = mainEntxmlEntries.Count + socpakEntxmlEntries.Count;
         var totalSocFiles = mainSocEntries.Count + socpakSocEntries.Count;
-        
-        if (totalXmlFiles == 0 && totalSocFiles == 0)
+
+        if (totalXmlFiles == 0 && totalEntxmlFiles == 0 && totalSocFiles == 0)
         {
-            await console.Output.WriteLineAsync("No XML or SOC files found in P4K or SOCPAKs.");
+            await console.Output.WriteLineAsync("No XML, ENTXML or SOC files found in P4K or SOCPAKs.");
             return;
         }
 
